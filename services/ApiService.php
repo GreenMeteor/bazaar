@@ -7,14 +7,13 @@ use yii\base\Component;
 use yii\base\Exception;
 use yii\caching\TagDependency;
 use yii\httpclient\Client;
+use humhub\modules\bazaar\models\Module;
 
 /**
  * Class ApiService
  *
  * Handles communication with the Green Meteor Bazaar API
  * and provides caching, scraping fallback, and module purchase functionality.
- *
- * @package humhub\modules\bazaar\services
  */
 class ApiService extends Component
 {
@@ -26,11 +25,8 @@ class ApiService extends Component
     public function init(): void
     {
         parent::init();
-
         $module = Yii::$app->getModule('bazaar');
-        if ($module) {
-            $this->apiKey = $module->apiKey ?? '';
-        }
+        $this->apiKey = $module->apiKey;
 
         $this->_client = new Client([
             'baseUrl' => $this->baseUrl,
@@ -49,7 +45,6 @@ class ApiService extends Component
     {
         $cacheKey = 'bazaar_modules';
         $module = Yii::$app->getModule('bazaar');
-        $cacheTimeout = $module->cacheTimeout ?? 3600;
 
         return Yii::$app->cache->getOrSet(
             $cacheKey,
@@ -58,193 +53,181 @@ class ApiService extends Component
                     $response = $this->_client->get('', [
                         'action' => 'list',
                         'format' => 'json',
+                        'include_purchased' => $this->getCurrentUserSession(),
                     ])->send();
 
-                    if ($response->isOk && isset($response->data['success']) && $response->data['success']) {
-                        return $this->transformApiData($response->data['data']);
+                    if ($response->isOk && isset($response->data['data'])) {
+                        Yii::info('API Response received: ' . json_encode($response->data), 'bazaar');
+                        return array_map([$this, 'mapModuleData'], $response->data['data']);
                     }
 
-                    return $this->scrapeModulesFromPage();
+                    Yii::warning('API failed, falling back to scraping', 'bazaar');
+                    return array_map([$this, 'mapModuleData'], $this->scrapeModulesFromPage());
+
                 } catch (\Exception $e) {
                     Yii::error('Green Meteor API error: ' . $e->getMessage(), 'bazaar');
-                    return $this->scrapeModulesFromPage();
+                    return array_map([$this, 'mapModuleData'], $this->scrapeModulesFromPage());
                 }
             },
-            $cacheTimeout,
+            $module->cacheTimeout ?? 3600,
             new TagDependency(['tags' => ['bazaar_modules']])
         );
     }
 
-    public function getModule($moduleId): ?array
+    public function getModule(string $id): ?Module
     {
-        // FIXED: Ensure moduleId is properly cast for comparison
-        $moduleId = (string)$moduleId; // Convert to string for consistent comparison
-        
-        try {
-            $response = $this->_client->get('', [
-                'action' => 'get',
-                'module_id' => $moduleId,
-                'format' => 'json',
-            ])->send();
-
-            if ($response->isOk && isset($response->data['success']) && $response->data['success']) {
-                return $this->transformSingleModule($response->data['data']);
-            }
-
-        } catch (\Exception $e) {
-            Yii::error('Green Meteor API error fetching module: ' . $e->getMessage(), 'bazaar');
-        }
-
-        // Fallback: search in cached modules list
-        $modules = $this->getModules();
-        foreach ($modules as $module) {
-            // FIXED: Handle both string and numeric ID comparisons
-            if ((string)($module['id'] ?? '') === $moduleId) {
-                return $module;
+        $modulesData = $this->getModules();
+        foreach ($modulesData as $moduleData) {
+            if ($moduleData['id'] === $id) {
+                return new Module($moduleData);
             }
         }
 
         return null;
     }
 
-    public function purchaseModule(int $moduleId, array $options = []): array
+    public function purchaseModule($moduleId, array $options = []): array
     {
-        $postData = [
-            'action' => 'purchase',
-            'module_id' => $moduleId,
-        ];
+        Yii::info("purchaseModule called with moduleId: {$moduleId}, options: " . json_encode($options), 'bazaar');
 
-        if (!empty($options['return_url'])) {
-            $postData['return_url'] = $options['return_url'];
-        }
+        if (is_numeric($moduleId)) {
+            $moduleId = (int)$moduleId;
 
-        if (!empty($options['cancel_url'])) {
-            $postData['cancel_url'] = $options['cancel_url'];
-        }
-
-        $response = $this->_client->post('', [], json_encode($postData))
-            ->setHeaders(['Content-Type' => 'application/json'])
-            ->send();
-
-        if (!$response->isOk) {
-            throw new Exception("Purchase failed for module {$moduleId}: HTTP {$response->statusCode}");
-        }
-
-        $data = $response->getData();
-
-        if (isset($data['error'])) {
-            throw new Exception("Purchase failed for module {$moduleId}: " . $data['error']);
-        }
-
-        if (!isset($data['success']) || !$data['success']) {
-            throw new Exception("Purchase failed for module {$moduleId}: Unknown error");
-        }
-
-        return $data;
-    }
-
-    public function verifyPurchase(string $sessionId): array
-    {
-        try {
-            $response = $this->_client->get('verify-purchase.php', [
-                'session_id' => $sessionId,
-            ])->send();
-
-            if (!$response->isOk) {
-                throw new \Exception("Verification failed: HTTP {$response->statusCode}");
-            }
-
-            $data = $response->getData();
-
-            if (isset($data['error'])) {
-                throw new \Exception("Verification failed: " . $data['error']);
-            }
-
-            return [
-                'verified' => $data['verified'] ?? false,
-                'module_id' => $data['module_id'] ?? null,
-                'payment_status' => $data['payment_status'] ?? 'unknown',
+            $postData = [
+                'action' => 'purchase',
+                'module_id' => $moduleId,
+                'return_url' => $options['return_url'] ?? '',
+                'cancel_url' => $options['cancel_url'] ?? '',
             ];
 
-        } catch (\Exception $e) {
-            Yii::error('Purchase verification error: ' . $e->getMessage(), 'bazaar');
-            return [
-                'verified' => false,
-                'error' => $e->getMessage(),
-            ];
-        }
-    }
+            Yii::info("Making API call with data: " . json_encode($postData), 'bazaar');
 
-    public function clearCache(): void
-    {
-        TagDependency::invalidate(Yii::$app->cache, ['bazaar_modules']);
-    }
+            try {
+                // Use POST with form data instead of JSON
+                $response = $this->_client->createRequest()
+                    ->setMethod('POST')
+                    ->setUrl('')
+                    ->setData($postData)
+                    ->setFormat(Client::FORMAT_URLENCODED) // Key change: use form data
+                    ->send();
 
-    private function transformApiData(array $rawData): array
-    {
-        $modules = [];
-        foreach ($rawData as $item) {
-            $modules[] = $this->transformSingleModule($item);
-        }
-        return $modules;
-    }
+                Yii::info("API response status: " . $response->statusCode, 'bazaar');
+                Yii::info("API response headers: " . json_encode($response->headers->toArray()), 'bazaar');
+                Yii::info("API raw response: " . $response->content, 'bazaar');
 
-    private function transformSingleModule(array $item): array
-    {
-        // DEBUG: Log raw API data
-        Yii::info('Raw module data: ' . json_encode($item), 'bazaar-debug');
-        
-        // FIXED: Ensure price is properly handled as float
-        $price = 0.0;
-        if (isset($item['price'])) {
-            if (is_numeric($item['price'])) {
-                $price = (float)$item['price'];
-            } elseif (is_string($item['price'])) {
-                // Handle string prices like "$19.99" or "19.99"
-                $cleanPrice = preg_replace('/[^\d.]/', '', $item['price']);
-                $price = $cleanPrice ? (float)$cleanPrice : 0.0;
+                if (!$response->isOk) {
+                    $errorMsg = "Purchase API failed for module {$moduleId}: HTTP {$response->statusCode}";
+                    Yii::error($errorMsg, 'bazaar');
+                    Yii::error("Response content: " . $response->content, 'bazaar');
+                    throw new Exception($errorMsg);
+                }
+
+                // Handle both JSON and raw content responses
+                $data = $response->data;
+                if (empty($data) && $response->content) {
+                    $data = json_decode($response->content, true);
+                    if (json_last_error() !== JSON_ERROR_NONE) {
+                        throw new Exception("Invalid JSON response: " . $response->content);
+                    }
+                }
+
+                Yii::info("API response data: " . json_encode($data), 'bazaar');
+
+                if (isset($data['error'])) {
+                    $errorMsg = "Purchase failed for module {$moduleId}: " . $data['error'];
+                    Yii::error($errorMsg, 'bazaar');
+                    throw new Exception($errorMsg);
+                }
+
+                // Check for checkout_url in the response
+                if (isset($data['checkout_url']) && !empty($data['checkout_url'])) {
+                    Yii::info("Received checkout URL: " . $data['checkout_url'], 'bazaar');
+                    return $data;
+                }
+
+                // Check if it's a free module
+                if (isset($data['is_free']) && $data['is_free']) {
+                    return $data;
+                }
+
+                // If we get here, something went wrong
+                throw new Exception("No checkout URL or free module flag in response: " . json_encode($data));
+
+            } catch (\yii\httpclient\Exception $e) {
+                $errorMsg = "HTTP Client exception for module {$moduleId}: " . $e->getMessage();
+                Yii::error($errorMsg, 'bazaar');
+                throw new Exception($errorMsg);
+            } catch (\Exception $e) {
+                $errorMsg = "General exception for module {$moduleId}: " . $e->getMessage();
+                Yii::error($errorMsg, 'bazaar');
+                throw new Exception($errorMsg);
             }
         }
 
-        // CRITICAL FIX: Properly determine isPaid - API flag takes precedence
-        $isPaid = false;
-        if (isset($item['is_paid'])) {
-            $isPaid = (bool)$item['is_paid'];
-        } else {
-            // Only use price as fallback if no explicit is_paid flag
-            $isPaid = $price > 0;
-        }
-        
-        // DEBUG: Log transformation
-        Yii::info("Module {$item['id']}: price={$price}, is_paid_flag=" . ($item['is_paid'] ?? 'null') . ", calculated_isPaid={$isPaid}", 'bazaar-debug');
+        Yii::info("Handling non-numeric module ID as free module: {$moduleId}", 'bazaar');
 
-        // FIXED: Handle screenshots properly
-        $screenshots = [];
-        if (!empty($item['screenshots']) && is_array($item['screenshots'])) {
-            $screenshots = $item['screenshots'];
-        } elseif (!empty($item['image'])) {
-            $screenshots = [$item['image']];
+        if (!isset($_SESSION['purchased_modules'])) {
+            $_SESSION['purchased_modules'] = [];
+        }
+
+        if (!in_array($moduleId, $_SESSION['purchased_modules'])) {
+            $_SESSION['purchased_modules'][] = $moduleId;
         }
 
         return [
-            'id' => $item['id'] ?? '',
-            'name' => $item['name'] ?? '',
-            'description' => $item['description'] ?? '',
-            'version' => $item['version'] ?? '1.0.0',
-            'price' => $price,
-            'currency' => $item['currency'] ?? 'USD',
-            'category' => $item['category'] ?? 'other',
-            'author' => $item['author'] ?? 'Green Meteor',
-            'screenshots' => $screenshots,
-            'features' => is_array($item['features'] ?? null) ? $item['features'] : $this->extractFeatures($item['description'] ?? ''),
-            'requirements' => $item['requirements'] ?? ['HumHub 1.18+', 'PHP 8.2+'],
-            'downloadUrl' => $item['download_url'] ?? null,
-            'isPurchased' => (bool)($item['is_purchased'] ?? false),
-            'isPaid' => $isPaid,
-            'isSoon' => (bool)($item['is_soon'] ?? false),
-            'productId' => $item['product_id'] ?? null,
-            'priceId' => $item['price_id'] ?? null,
+            'success' => true,
+            'is_free' => true,
+            'message' => "Module '{$moduleId}' marked as purchased locally.",
+            'moduleId' => $moduleId,
         ];
+    }
+
+    /**
+     * Map raw API or scraped module data to camelCase keys for Module model
+     */
+    private function mapModuleData(array $data): array
+    {
+        Yii::info('Mapping module data: ' . json_encode($data), 'bazaar');
+
+        $price = 0;
+        if (isset($data['price'])) {
+            if (is_numeric($data['price'])) {
+                $price = floatval($data['price']);
+            } else {
+                $priceStr = preg_replace('/[^0-9.,]/', '', (string)$data['price']);
+                $price = floatval(str_replace(',', '', $priceStr));
+            }
+        }
+
+        $isPaid = false;
+        if (isset($data['is_paid'])) {
+            $isPaid = (bool)$data['is_paid'];
+        } else {
+            $isPaid = $price > 0;
+        }
+
+        $mapped = [
+            'id' => $data['id'] ?? '',
+            'name' => $data['name'] ?? '',
+            'description' => $data['description'] ?? '',
+            'version' => $data['version'] ?? '1.0.0',
+            'price' => $price,
+            'currency' => $data['currency'] ?? 'USD',
+            'isPaid' => $isPaid,
+            'isPurchased' => (bool)($data['is_purchased'] ?? false),
+            'isSoon' => (bool)($data['is_soon'] ?? false),
+            'category' => $data['category'] ?? $this->determineCategory($data['name'] ?? '', $data['description'] ?? ''),
+            'author' => $data['author'] ?? 'Green Meteor',
+            'screenshots' => isset($data['image']) ? [$data['image']] : ($data['screenshots'] ?? []),
+            'features' => $this->extractFeatures($data['description'] ?? ''),
+            'requirements' => $data['requirements'] ?? ['HumHub 1.18+', 'PHP 8.2+'],
+            'downloadUrl' => ($data['is_purchased'] ?? false) ? "https://greenmeteor.net/download?module={$data['id']}" : ($data['download_url'] ?? null),
+        ];
+        
+        // Debug: Log mapped data
+        Yii::info('Mapped module: ' . json_encode($mapped), 'bazaar');
+        
+        return $mapped;
     }
 
     private function scrapeModulesFromPage(): array
@@ -254,8 +237,9 @@ class ApiService extends Component
             if (!$response->isOk) {
                 return [];
             }
+            $html = $response->content;
+            return $this->parseModuleCardsFromHtml($html);
 
-            return $this->parseModuleCardsFromHtml($response->content);
         } catch (\Exception $e) {
             Yii::error('Scraping error: ' . $e->getMessage(), 'bazaar');
             return [];
@@ -272,70 +256,69 @@ class ApiService extends Component
 
         foreach ($cards as $card) {
             try {
-                $id = $card->getAttribute('data-module-id') ?: uniqid();
+                $id = $card->getAttribute('data-module-id');
                 $titleEl = $xpath->query('.//h3[@class="module-title"]', $card)->item(0);
                 $descEl = $xpath->query('.//p[@class="module-description"]', $card)->item(0);
                 $priceEl = $xpath->query('.//span[@class="module-price"]', $card)->item(0);
                 $imgEl = $xpath->query('.//img', $card)->item(0);
 
-                if (!$titleEl || !$descEl || !$priceEl) {
-                    continue;
-                }
+                if (!$titleEl || !$descEl || !$priceEl) continue;
 
                 $name = trim($titleEl->textContent);
                 $desc = trim($descEl->textContent);
                 $priceText = trim($priceEl->textContent);
                 $image = $imgEl ? $imgEl->getAttribute('src') : '';
 
-                // FIXED: Better price parsing from scraped content
-                $price = 0.0;
-                if (preg_match('/\$?([0-9,]+\.?[0-9]*)/', $priceText, $matches)) {
-                    $price = (float)str_replace(',', '', $matches[1]);
+                // Improved price parsing
+                $price = 0;
+                if (preg_match('/\$([0-9,]+\.?[0-9]*)/', $priceText, $matches)) {
+                    $price = floatval(str_replace(',', '', $matches[1]));
+                } elseif (preg_match('/([0-9,]+\.?[0-9]*)/', $priceText, $matches)) {
+                    $price = floatval(str_replace(',', '', $matches[1]));
                 }
 
+                $isSoon = stripos($name, 'coming soon') !== false;
+                $isPaid = $price > 0;
+
                 $modules[] = [
-                    'id' => $id,
+                    'id' => $id ?: uniqid(),
                     'name' => $name,
                     'description' => $desc,
                     'version' => '1.0.0',
                     'price' => $price,
                     'currency' => 'USD',
+                    'is_paid' => $isPaid,
+                    'isPaid' => $isPaid,
+                    'is_purchased' => false,
+                    'isPurchased' => false,
+                    'is_soon' => $isSoon,
+                    'isSoon' => $isSoon,
                     'category' => $this->determineCategory($name, $desc),
                     'author' => 'Green Meteor',
                     'screenshots' => $image ? [$image] : [],
                     'features' => $this->extractFeatures($desc),
                     'requirements' => ['HumHub 1.18+', 'PHP 8.2+'],
-                    'downloadUrl' => $price > 0 ? null : "https://greenmeteor.net/download?module={$id}",
-                    'isPurchased' => false,
-                    'isPaid' => $price > 0,
-                    'isSoon' => false,
+                    'downloadUrl' => $isPaid ? null : "#",
                 ];
+                
+                // Debug scraped module
+                Yii::info('Scraped module: ' . $name . ' - Price: ' . $price . ' - isPaid: ' . ($isPaid ? 'true' : 'false'), 'bazaar');
+                
             } catch (\Exception $e) {
                 Yii::error('Error parsing module card: ' . $e->getMessage(), 'bazaar');
             }
         }
-
         return $modules;
     }
 
     private function determineCategory(string $name, string $description): string
     {
         $text = strtolower($name . ' ' . $description);
-        if (strpos($text, 'calendar') !== false || strpos($text, 'event') !== false || strpos($text, 'schedule') !== false) {
-            return 'productivity';
-        }
-        if (strpos($text, 'poll') !== false || strpos($text, 'survey') !== false || strpos($text, 'vote') !== false) {
-            return 'social';
-        }
-        if (strpos($text, 'message') !== false || strpos($text, 'mail') !== false || strpos($text, 'chat') !== false) {
-            return 'communication';
-        }
-        if (strpos($text, 'wiki') !== false || strpos($text, 'docs') !== false || strpos($text, 'document') !== false) {
-            return 'content';
-        }
-        if (strpos($text, 'shop') !== false || strpos($text, 'store') !== false || strpos($text, 'commerce') !== false) {
-            return 'integration';
-        }
+        if (strpos($text, 'calendar') !== false || strpos($text, 'event') !== false) return 'productivity';
+        if (strpos($text, 'poll') !== false || strpos($text, 'survey') !== false) return 'social';
+        if (strpos($text, 'message') !== false || strpos($text, 'mail') !== false) return 'communication';
+        if (strpos($text, 'wiki') !== false || strpos($text, 'docs') !== false) return 'content';
+        if (strpos($text, 'shop') !== false || strpos($text, 'store') !== false) return 'integration';
         return 'other';
     }
 
@@ -344,8 +327,15 @@ class ApiService extends Component
         return [
             'Professional HumHub module',
             'Full documentation included',
-            'Regular updates and support',
-            'Easy installation'
+            'Regular updates',
+            'Support included'
         ];
+    }
+
+    private function getCurrentUserSession(): string
+    {
+        $user = Yii::$app->user->identity;
+
+        return $user ? $user->email : session_id();
     }
 }

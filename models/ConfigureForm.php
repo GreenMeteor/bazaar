@@ -3,17 +3,14 @@
 namespace humhub\modules\bazaar\models;
 
 use Yii;
-use yii\base\Model;
+use humhub\components\SettingsManager;
 
-/**
- * ConfigureForm for Bazaar module settings
- */
-class ConfigureForm extends Model
+class ConfigureForm extends \yii\base\Model
 {
-    public $apiBaseUrl = 'https://greenmeteor.net/api/modules.php';
+    public $apiBaseUrl;
     public $apiKey;
-    public $cacheTimeout = 3600;
-    public $enablePurchasing = true;
+    public $cacheTimeout;
+    public $enablePurchasing;
 
     /**
      * @inheritdoc
@@ -24,7 +21,7 @@ class ConfigureForm extends Model
             [['apiBaseUrl'], 'required'],
             [['apiBaseUrl'], 'url'],
             [['apiKey'], 'string', 'max' => 255],
-            [['cacheTimeout'], 'integer', 'min' => 60, 'max' => 86400], // 1 min to 24 hours
+            [['cacheTimeout'], 'integer', 'min' => 60],
             [['enablePurchasing'], 'boolean'],
         ];
     }
@@ -43,21 +40,20 @@ class ConfigureForm extends Model
     }
 
     /**
-     * Load current configuration
+     * Load settings
      */
-    public function loadFromModule()
+    public function loadSettings()
     {
-        $module = Yii::$app->getModule('bazaar');
-        if ($module) {
-            $this->apiBaseUrl = $module->apiBaseUrl ?? $this->apiBaseUrl;
-            $this->apiKey = $module->apiKey ?? '';
-            $this->cacheTimeout = $module->cacheTimeout ?? $this->cacheTimeout;
-            $this->enablePurchasing = $module->enablePurchasing ?? $this->enablePurchasing;
-        }
+        $settings = Yii::$app->getModule('bazaar')->settings;
+
+        $this->apiBaseUrl = $settings->get('apiBaseUrl', 'https://api.greenmeteor.net/v1');
+        $this->apiKey = $settings->get('apiKey', '');
+        $this->cacheTimeout = (int)$settings->get('cacheTimeout', 3600);
+        $this->enablePurchasing = (bool)$settings->get('enablePurchasing', true);
     }
 
     /**
-     * Save configuration to module settings
+     * Save settings
      */
     public function save()
     {
@@ -65,54 +61,13 @@ class ConfigureForm extends Model
             return false;
         }
 
-        $module = Yii::$app->getModule('bazaar');
-        if ($module) {
-            // In a real implementation, you'd save these to database or config files
-            // For now, we'll just set them on the module instance
-            $module->apiBaseUrl = $this->apiBaseUrl;
-            $module->apiKey = $this->apiKey;
-            $module->cacheTimeout = (int)$this->cacheTimeout;
-            $module->enablePurchasing = (bool)$this->enablePurchasing;
-            
-            // You might want to save to database here:
-            // $this->saveToDatabase();
-        }
+        $settings = Yii::$app->getModule('bazaar')->settings;
+
+        $settings->set('apiBaseUrl', $this->apiBaseUrl);
+        $settings->set('apiKey', $this->apiKey);
+        $settings->set('cacheTimeout', $this->cacheTimeout);
+        $settings->set('enablePurchasing', $this->enablePurchasing);
 
         return true;
-    }
-
-    /**
-     * Test API connection
-     */
-    public function testConnection()
-    {
-        try {
-            $client = new \yii\httpclient\Client([
-                'baseUrl' => $this->apiBaseUrl,
-            ]);
-
-            $response = $client->get('', [
-                'action' => 'list',
-                'format' => 'json',
-            ])->send();
-
-            if ($response->isOk) {
-                return [
-                    'success' => true,
-                    'message' => Yii::t('BazaarModule.base', 'API connection successful'),
-                ];
-            } else {
-                return [
-                    'success' => false,
-                    'message' => Yii::t('BazaarModule.base', 'API connection failed: HTTP {code}', ['code' => $response->statusCode]),
-                ];
-            }
-
-        } catch (\Exception $e) {
-            return [
-                'success' => false,
-                'message' => Yii::t('BazaarModule.base', 'API connection failed: {error}', ['error' => $e->getMessage()]),
-            ];
-        }
     }
 }

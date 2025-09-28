@@ -6,7 +6,9 @@ use humhub\widgets\bootstrap\Badge;
 use humhub\modules\ui\icon\widgets\Icon;
 use humhub\helpers\Html;
 use yii\helpers\Url;
-use humhub\modules\bazaar\models\Module;
+use humhub\modules\bazaar\assets\BazaarAsset;
+
+BazaarAsset::register($this);
 
 /* @var $this \humhub\components\View */
 /* @var $modules \humhub\modules\bazaar\models\Module[] */
@@ -28,6 +30,31 @@ use humhub\modules\bazaar\models\Module;
     </div>
 
     <div class="panel-body">
+        <!-- DEBUG SECTION - Remove this after fixing -->
+        <?php if (YII_DEBUG): ?>
+        <div class="alert alert-info">
+            <h5>Debug Information</h5>
+            <p><strong>Total modules:</strong> <?= count($modules) ?></p>
+            <p><strong>PHP Version:</strong> <?= PHP_VERSION ?></p>
+            <p><strong>Current time:</strong> <?= date('Y-m-d H:i:s') ?></p>
+
+            <h6>Sample Module Data:</h6>
+            <?php if (!empty($modules)): ?>
+                <?php $sampleModule = $modules[0]; ?>
+                <pre><?= Html::encode(print_r([
+                    'name' => $sampleModule->name,
+                    'price' => $sampleModule->price,
+                    'price_type' => gettype($sampleModule->price),
+                    'isPaid' => $sampleModule->isPaid,
+                    'isPaid_type' => gettype($sampleModule->isPaid),
+                    'currency' => $sampleModule->currency,
+                    'formatted_price' => method_exists($sampleModule, 'getFormattedPrice') ? $sampleModule->getFormattedPrice() : 'N/A'
+                ], true)) ?></pre>
+            <?php endif; ?>
+        </div>
+        <?php endif; ?>
+        <!-- END DEBUG SECTION -->
+
         <!-- Filter Bar -->
         <div class="row mb-4">
             <div class="col-md-6">
@@ -35,7 +62,7 @@ use humhub\modules\bazaar\models\Module;
                 <div class="input-group">
                     <?= Html::textInput('search', Yii::$app->request->get('search'), [
                         'class' => 'form-control',
-                        'placeholder' => Yii::t('BazaarModule.base', 'Search modules...')
+                        'placeholder' => Yii::t('BazaarModule.base', 'Search modules...'),
                     ]) ?>
                     <button class="btn btn-outline-secondary" type="submit">
                         <?= Icon::get('search') ?>
@@ -45,13 +72,13 @@ use humhub\modules\bazaar\models\Module;
             </div>
 
             <div class="col-md-3">
-                <?= Html::dropDownList('category', '', 
+                <?= Html::dropDownList('category', Yii::$app->request->get('category', ''), 
                     array_merge(['' => Yii::t('BazaarModule.base', 'All Categories')], $categories), 
                     ['class' => 'form-select filter-category']) ?>
             </div>
 
             <div class="col-md-3">
-                <?= Html::dropDownList('sort', '', [
+                <?= Html::dropDownList('sort', Yii::$app->request->get('sort', ''), [
                     'name' => Yii::t('BazaarModule.base', 'Name'),
                     'price' => Yii::t('BazaarModule.base', 'Price'),
                     'category' => Yii::t('BazaarModule.base', 'Category'),
@@ -70,37 +97,21 @@ use humhub\modules\bazaar\models\Module;
             </div>
         <?php else: ?>
             <div class="row g-4">
-                <?php foreach ($modules as $module): 
-                    if (is_array($module)) {
-                        $module = Module::fromArray($module);
-                    }
-                ?>
+                <?php foreach ($modules as $index => $module): ?>
                     <div class="col-lg-4 col-md-6">
-                        <div class="card h-100 module-card" data-module-id="<?= Html::encode($module->id) ?>">
-
+                        <div class="card h-100 module-card">
                             <!-- Module Image -->
                             <div class="module-image">
                                 <?php if (!empty($module->screenshots)): ?>
                                     <?= Html::img($module->screenshots[0], [
                                         'class' => 'card-img-top',
                                         'alt' => $module->name,
-                                        'style' => 'height: 200px; object-fit: cover;'
+                                        'style' => 'height: 200px; object-fit: cover;',
                                     ]) ?>
                                 <?php else: ?>
                                     <div class="placeholder-image d-flex align-items-center justify-content-center bg-light" 
                                          style="height: 200px;">
                                         <?= Icon::get('puzzle-piece') ?>
-                                    </div>
-                                <?php endif; ?>
-
-                                <!-- Price badge overlay -->
-                                <?php if ($module->isPaid && $module->price > 0): ?>
-                                    <div class="position-absolute top-0 end-0 m-2">
-                                        <span class="badge bg-primary"><?= $module->getFormattedPrice() ?></span>
-                                    </div>
-                                <?php elseif (!$module->isPaid): ?>
-                                    <div class="position-absolute top-0 end-0 m-2">
-                                        <span class="badge bg-success"><?= Yii::t('BazaarModule.base', 'Free') ?></span>
                                     </div>
                                 <?php endif; ?>
                             </div>
@@ -117,6 +128,16 @@ use humhub\modules\bazaar\models\Module;
                                     <?= Yii::t('BazaarModule.base', 'by {author}', ['author' => Html::encode($module->author)]) ?>
                                     • v<?= Html::encode($module->version) ?>
                                 </p>
+
+                                <!-- DEBUG INFO for specific module -->
+                                <?php if (YII_DEBUG): ?>
+                                <div class="small text-info mb-2" style="font-family: monospace;">
+                                    DEBUG: price=<?= Html::encode($module->price) ?> 
+                                    (<?= gettype($module->price) ?>), 
+                                    isPaid=<?= $module->isPaid ? 'true' : 'false' ?> 
+                                    (<?= gettype($module->isPaid) ?>)
+                                </div>
+                                <?php endif; ?>
 
                                 <!-- Description -->
                                 <p class="card-text flex-grow-1">
@@ -136,35 +157,41 @@ use humhub\modules\bazaar\models\Module;
 
                                 <!-- Actions -->
                                 <div class="d-flex justify-content-between align-items-center mt-auto">
+                                    <!-- Price / Badge -->
                                     <div class="price">
                                         <?php if ($module->isSoon): ?>
                                             <?= Badge::warning(Yii::t('BazaarModule.base', 'Coming Soon')) ?>
                                         <?php elseif ($module->isPurchased): ?>
                                             <?= Badge::success(Yii::t('BazaarModule.base', 'Purchased')) ?>
-                                        <?php else: ?>
-                                            <strong class="<?= $module->getPriceDisplayClass() ?>">
-                                                <?= $module->getFormattedPrice() ?>
+                                        <?php elseif ($module->isPaid): ?>
+                                            <strong class="text-primary">
+                                                <?php if (method_exists($module, 'getFormattedPrice')): ?>
+                                                    <?= $module->getFormattedPrice() ?>
+                                                <?php else: ?>
+                                                    <?= Html::encode(number_format($module->price, 2)) ?> <?= Html::encode($module->currency) ?>
+                                                <?php endif; ?>
                                             </strong>
+                                        <?php else: ?>
+                                            <?= Badge::info(Yii::t('BazaarModule.base', 'Free')) ?>
                                         <?php endif; ?>
                                     </div>
 
+                                    <!-- Action Buttons -->
                                     <div class="btn-group btn-group-sm">
                                         <?= Button::info(Yii::t('BazaarModule.base', 'Details'))
                                             ->link(['/bazaar/admin/view', 'id' => $module->id])
                                             ->sm() ?>
-                                        
-                                        <?php if ($module->isAvailableForPurchase()): ?>
-                                            <?= Button::primary(Yii::t('BazaarModule.base', 'Buy'))
-                                                ->link(['/bazaar/admin/purchase', 'id' => $module->id])
-                                                ->sm() ?>
-                                        <?php elseif (!$module->isPaid && !$module->isPurchased && !$module->isSoon): ?>
-                                            <?= Button::success(Yii::t('BazaarModule.base', 'Install'))
-                                                ->link($module->downloadUrl ?: '#')
-                                                ->sm() ?>
-                                        <?php elseif ($module->isPurchased && $module->isDownloadable()): ?>
-                                            <?= Button::success(Yii::t('BazaarModule.base', 'Download'))
-                                                ->link($module->downloadUrl)
-                                                ->sm() ?>
+
+                                        <?php if (!$module->isPurchased && !$module->isSoon): ?>
+                                            <?php if ($module->isPaid): ?>
+                                                <?= Button::primary(Yii::t('BazaarModule.base', 'Buy'))
+                                                    ->link(['/bazaar/admin/purchase', 'id' => $module->id])
+                                                    ->sm() ?>
+                                            <?php else: ?>
+                                                <?= Button::success(Yii::t('BazaarModule.base', 'Install'))
+                                                    ->link($module->downloadUrl ?? '#')
+                                                    ->sm() ?>
+                                            <?php endif; ?>
                                         <?php endif; ?>
                                     </div>
                                 </div>

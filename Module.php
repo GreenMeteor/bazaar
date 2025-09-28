@@ -11,7 +11,7 @@ class Module extends BaseModule
     /**
      * @var string Green Meteor API base URL
      */
-    public $apiBaseUrl = 'https://greenmeteor.net/api/modules.php';
+    public $apiBaseUrl = 'https://greenmeteor.net';
 
     /**
      * @var string API key for authentication (not needed for Green Meteor integration)
@@ -32,34 +32,6 @@ class Module extends BaseModule
      * @var bool Use Green Meteor domain as API endpoint (default: true)
      */
     public $useGreenMeteorApi = true;
-
-    /**
-     * @inheritdoc
-     */
-    public function init()
-    {
-        parent::init();
-
-        $this->loadSettings();
-    }
-
-    /**
-     * Load settings from database
-     */
-    private function loadSettings()
-    {
-        if (!\Yii::$app->hasModule('bazaar') || !$this->settings) {
-            return;
-        }
-
-        try {
-            $this->apiBaseUrl = $this->settings->get('apiBaseUrl', $this->apiBaseUrl);
-            $this->apiKey = $this->settings->get('apiKey', $this->apiKey);
-            $this->cacheTimeout = (int)$this->settings->get('cacheTimeout', $this->cacheTimeout);
-            $this->enablePurchasing = (bool)$this->settings->get('enablePurchasing', $this->enablePurchasing);
-        } catch (\Exception $e) {
-        }
-    }
 
     /**
      * @inheritdoc

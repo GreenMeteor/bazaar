@@ -15,10 +15,4 @@ class BazaarAsset extends AssetBundle
     public $js = [
         'js/bazaar.js',
     ];
-
-    public $depends = [
-        'humhub\assets\CoreApiAsset',
-        'humhub\assets\JqueryAsset',
-        'humhub\modules\ui\assets\BootstrapAsset',
-    ];
 }
