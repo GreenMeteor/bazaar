@@ -30,31 +30,6 @@ BazaarAsset::register($this);
     </div>
 
     <div class="panel-body">
-        <!-- DEBUG SECTION - Remove this after fixing -->
-        <?php if (YII_DEBUG): ?>
-        <div class="alert alert-info">
-            <h5>Debug Information</h5>
-            <p><strong>Total modules:</strong> <?= count($modules) ?></p>
-            <p><strong>PHP Version:</strong> <?= PHP_VERSION ?></p>
-            <p><strong>Current time:</strong> <?= date('Y-m-d H:i:s') ?></p>
-
-            <h6>Sample Module Data:</h6>
-            <?php if (!empty($modules)): ?>
-                <?php $sampleModule = $modules[0]; ?>
-                <pre><?= Html::encode(print_r([
-                    'name' => $sampleModule->name,
-                    'price' => $sampleModule->price,
-                    'price_type' => gettype($sampleModule->price),
-                    'isPaid' => $sampleModule->isPaid,
-                    'isPaid_type' => gettype($sampleModule->isPaid),
-                    'currency' => $sampleModule->currency,
-                    'formatted_price' => method_exists($sampleModule, 'getFormattedPrice') ? $sampleModule->getFormattedPrice() : 'N/A'
-                ], true)) ?></pre>
-            <?php endif; ?>
-        </div>
-        <?php endif; ?>
-        <!-- END DEBUG SECTION -->
-
         <!-- Filter Bar -->
         <div class="row mb-4">
             <div class="col-md-6">
@@ -128,16 +103,6 @@ BazaarAsset::register($this);
                                     <?= Yii::t('BazaarModule.base', 'by {author}', ['author' => Html::encode($module->author)]) ?>
                                     • v<?= Html::encode($module->version) ?>
                                 </p>
-
-                                <!-- DEBUG INFO for specific module -->
-                                <?php if (YII_DEBUG): ?>
-                                <div class="small text-info mb-2" style="font-family: monospace;">
-                                    DEBUG: price=<?= Html::encode($module->price) ?> 
-                                    (<?= gettype($module->price) ?>), 
-                                    isPaid=<?= $module->isPaid ? 'true' : 'false' ?> 
-                                    (<?= gettype($module->isPaid) ?>)
-                                </div>
-                                <?php endif; ?>
 
                                 <!-- Description -->
                                 <p class="card-text flex-grow-1">
