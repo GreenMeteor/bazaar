@@ -1,162 +1,131 @@
 humhub.module('bazaar', function(module, require, $) {
     'use strict';
 
-    var object = require('util').object;
     var client = require('client');
-    var modal = require('ui.modal');
+    var status = require('ui.status');
 
-    var Bazaar = function() {
-        this.init();
+    var init = function() {
+        bindCardHover();
+        bindFilters();
+        bindTestConnection();
+        bindClearCache();
     };
 
-    object.inherits(Bazaar, object.Observable);
-
-    Bazaar.prototype.init = function() {
-        this.bindEvents();
-        this.initFilters();
-    };
-
-    Bazaar.prototype.bindEvents = function() {
-        var that = this;
-
+    var bindCardHover = function() {
         $(document).on('mouseenter', '.module-card', function() {
             $(this).addClass('shadow-lg');
         }).on('mouseleave', '.module-card', function() {
             $(this).removeClass('shadow-lg');
         });
-
-        $(document).on('click', '[data-action="purchase-module"]', function(e) {
-            e.preventDefault();
-            that.showPurchaseConfirmation($(this));
-        });
-
-        $(document).on('click', '[data-action="clear-cache"]', function(e) {
-            e.preventDefault();
-            that.clearCache();
-        });
     };
 
-    Bazaar.prototype.initFilters = function() {
-        var that = this;
-
+    var bindFilters = function() {
         var searchTimeout;
-        $('#module-search').on('input', function() {
-            clearTimeout(searchTimeout);
-            searchTimeout = setTimeout(function() {
-                that.filterModules();
-            }, 300);
-        });
 
-        $('.filter-category, .filter-sort').on('change', function() {
-            that.filterModules();
+        $(document).on('input', '#module-search', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(filterModules, 300);
         });
     };
 
-    Bazaar.prototype.filterModules = function() {
+    var filterModules = function() {
         var search = $('#module-search').val().toLowerCase();
         var category = $('.filter-category').val();
-        var sort = $('.filter-sort').val();
 
-        var $modules = $('.module-card').parent();
+        var anyVisible = false;
 
-        $modules.each(function() {
-            var $module = $(this);
-            var $card = $module.find('.module-card');
+        $('.module-card').each(function() {
+            var $card = $(this);
+            var $col = $card.closest('[class*="col-"]');
             var title = $card.find('.card-title').text().toLowerCase();
-            var description = $card.find('.card-text').text().toLowerCase();
+            var description = $card.find('.card-text').first().text().toLowerCase();
             var moduleCategory = $card.data('category');
 
             var matchesSearch = !search || title.includes(search) || description.includes(search);
             var matchesCategory = !category || category === moduleCategory;
+            var visible = matchesSearch && matchesCategory;
 
-            $module.toggle(matchesSearch && matchesCategory);
+            $col.toggleClass('d-none', !visible);
+            if (visible) {
+                anyVisible = true;
+            }
         });
 
-        if (sort) {
-            this.sortModules(sort);
+        var $noResults = $('.no-results');
+        if ($noResults.length) {
+            $noResults.toggleClass('d-none', anyVisible);
         }
-
-        var visibleModules = $('.module-card:visible').length;
-        $('.no-results').toggle(visibleModules === 0);
     };
 
-    Bazaar.prototype.sortModules = function(sortBy) {
-        var $container = $('.modules-container');
-        var $modules = $container.children().detach();
+    var bindTestConnection = function() {
+        $(document).on('click', '[data-action="testConnection"]', function(e) {
+            e.preventDefault();
 
-        $modules.sort(function(a, b) {
-            var $a = $(a);
-            var $b = $(b);
-            var aVal, bVal;
+            var $btn = $(this);
+            var url = $btn.data('action-url');
+            var $result = $('#bazaar-test-result');
 
-            switch(sortBy) {
-                case 'name':
-                    aVal = $a.find('.card-title').text();
-                    bVal = $b.find('.card-title').text();
-                    return aVal.localeCompare(bVal);
+            // Show loading spinner
+            $btn.prop('disabled', true);
+            $result.removeClass('d-none alert-success alert-danger')
+                .addClass('alert alert-info')
+                .html(
+                    '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>' +
+                    'Testing connection...' // plain string
+                );
 
-                case 'price':
-                    aVal = parseFloat($a.find('.price').data('price') || 0);
-                    bVal = parseFloat($b.find('.price').data('price') || 0);
-                    return aVal - bVal;
+            client.get(url, {}).then(function(response) {
+                $btn.prop('disabled', false);
+                $result.removeClass('alert-info');
 
-                case 'category':
-                    aVal = $a.find('.module-card').data('category') || '';
-                    bVal = $b.find('.module-card').data('category') || '';
-                    return aVal.localeCompare(bVal);
+                // Normalize response to avoid undefined
+                response = response || {};
+                var message = typeof response.message === 'string' ? response.message : '';
+                var success = Boolean(response.success);
 
-                default:
-                    return 0;
-            }
-        });
+                // Only show the API message; no "Success"/"Error" labels
+                $result.removeClass('alert-success alert-danger')
+                    .addClass(success ? 'alert-success' : 'alert-danger')
+                    .html(message);
 
-        $container.append($modules);
-    };
-
-    Bazaar.prototype.showPurchaseConfirmation = function($button) {
-        var moduleId = $button.data('module-id');
-        var moduleName = $button.data('module-name');
-        var modulePrice = $button.data('module-price');
-
-        modal.confirm(
-            module.text('Confirm Purchase'),
-            module.text('Are you sure you want to purchase "{name}" for {price}?', {
-                name: moduleName,
-                price: modulePrice
-            })
-        ).then(function(confirmed) {
-            if (confirmed) {
-                window.location.href = $button.attr('href');
-            }
+            }).catch(function() {
+                $btn.prop('disabled', false);
+                $result.removeClass('alert-info alert-success alert-danger')
+                    .addClass('alert-danger')
+                    .html('Could not reach the API. Check your server logs.'); // safe plain string
+            });
         });
     };
 
-    Bazaar.prototype.clearCache = function() {
-        var that = this;
+    var bindClearCache = function() {
+        $(document).on('click', '[data-action="clearCache"]', function(e) {
+            e.preventDefault();
 
-        client.post('/bazaar/admin/clear-cache').then(function(response) {
-            if (response.success) {
-                module.log.success('text', module.text('Cache cleared successfully!'));
-                // Optionally reload the page to show updated data
-                setTimeout(function() {
-                    window.location.reload();
-                }, 1000);
-            } else {
-                module.log.error('text', module.text('Failed to clear cache'));
-            }
+            var $btn = $(this);
+            var url = $btn.data('action-url');
+
+            $btn.prop('disabled', true);
+
+            client.post(url, {}).then(function(response) {
+                $btn.prop('disabled', false);
+
+                if (response.success) {
+                    status.success(module.text('Cache cleared. Reloading…'));
+                    setTimeout(function() {
+                        window.location.reload();
+                    }, 800);
+                } else {
+                    status.error(module.text('Failed to clear cache.'));
+                }
+
+            }).catch(function() {
+                $btn.prop('disabled', false);
+                status.error(module.text('Failed to clear cache.'));
+            });
         });
     };
 
     module.export({
-        Bazaar: Bazaar,
-        init: function() {
-            new Bazaar();
-        }
+        init: init,
     });
-});
-
-$(document).ready(function() {
-    if (typeof humhub !== 'undefined') {
-        humhub.require('bazaar').init();
-    }
 });

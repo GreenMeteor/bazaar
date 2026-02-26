@@ -1,6 +1,8 @@
 <?php
 
-class m000000_000000_initial extends \humhub\components\Migration
+use humhub\components\Migration;
+
+class m250000_000001_initial extends Migration
 {
     public function up()
     {

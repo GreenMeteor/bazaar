@@ -3,382 +3,446 @@
 namespace humhub\modules\bazaar\controllers;
 
 use Yii;
-use yii\web\Controller;
 use yii\web\NotFoundHttpException;
-use yii\web\Response;
-use humhub\modules\bazaar\services\ApiService;
-use humhub\modules\bazaar\models\Module;
+use humhub\modules\admin\components\Controller;
+use humhub\modules\bazaar\models\Module as BazaarModule;
+use humhub\modules\bazaar\models\ConfigureForm;
 
 /**
- * AdminController for Bazaar module
+ * AdminController — Bazaar module
+ *
+ * Handles module listing, purchasing, installation, and configuration
+ * within the HumHub administration panel.
+ *
+ * @since 1.0
  */
 class AdminController extends Controller
 {
     /**
-     * @var ApiService
+     * Renders all available modules from the Green Meteor API with optional
+     * server-side search, category, and sort filters.
      */
-    private $apiService;
-
-    public function init()
+    public function actionIndex(): string
     {
-        parent::init();
-        $this->apiService = new ApiService();
-    }
+        $apiService = Yii::$app->getModule('bazaar')->getApiService();
 
-    /**
-     * Display modules list
-     * @return string
-     */
-    public function actionIndex()
-    {
-        $search = Yii::$app->request->get('search', '');
-        $category = Yii::$app->request->get('category', '');
-        $sort = Yii::$app->request->get('sort', 'name');
-
-        // Get modules from API
-        $modulesData = $this->apiService->getModules();
-        
-        // FIXED: Convert all array data to Module objects for consistent handling
-        $modules = [];
-        foreach ($modulesData as $moduleData) {
-            if (is_array($moduleData)) {
-                $modules[] = Module::fromArray($moduleData);
-            } elseif ($moduleData instanceof Module) {
-                $modules[] = $moduleData;
-            }
+        try {
+            $modulesData = $apiService->getModules();
+        } catch (\Throwable $e) {
+            Yii::error('Failed to fetch modules: ' . $e->getMessage(), 'bazaar');
+            $modulesData = [];
+            $this->view->error(
+                Yii::t('BazaarModule.base', 'Could not reach the Green Meteor API. Please check your configuration.')
+            );
         }
 
-        // Apply filters
-        if ($search) {
-            $modules = array_filter($modules, function($module) use ($search) {
-                return stripos($module->name, $search) !== false || 
-                       stripos($module->description, $search) !== false;
-            });
-        }
-
-        if ($category) {
-            $modules = array_filter($modules, function($module) use ($category) {
-                return $module->category === $category;
-            });
-        }
-
-        // Apply sorting
-        usort($modules, function($a, $b) use ($sort) {
-            switch ($sort) {
-                case 'price':
-                    return $a->price <=> $b->price;
-                case 'category':
-                    return strcmp($a->category, $b->category);
-                case 'name':
-                default:
-                    return strcmp($a->name, $b->name);
-            }
-        });
-
-        // Get categories for filter dropdown
+        $modules    = [];
         $categories = [];
-        foreach ($modules as $module) {
-            if (!isset($categories[$module->category])) {
+
+        foreach ($modulesData as $data) {
+            $module      = new BazaarModule($data);
+            $modules[]   = $module;
+
+            if (!empty($module->category)) {
                 $categories[$module->category] = $module->getCategoryLabel();
             }
         }
 
-        return $this->render('index', [
-            'modules' => $modules,
+        $search   = Yii::$app->request->get('search',   '');
+        $category = Yii::$app->request->get('category', '');
+        $sort     = Yii::$app->request->get('sort',     '');
+
+        if ($search !== '') {
+            $modules = array_filter($modules, static function (BazaarModule $m) use ($search): bool {
+                return stripos($m->name,        $search) !== false
+                    || stripos($m->description, $search) !== false;
+            });
+        }
+
+        if ($category !== '') {
+            $modules = array_filter($modules, static function (BazaarModule $m) use ($category): bool {
+                return $m->category === $category;
+            });
+        }
+
+        switch ($sort) {
+            case 'name':
+                usort($modules, static fn (BazaarModule $a, BazaarModule $b): int => strcmp($a->name, $b->name));
+                break;
+            case 'price':
+                usort($modules, static fn (BazaarModule $a, BazaarModule $b): int => $a->price <=> $b->price);
+                break;
+            case 'category':
+                usort($modules, static fn (BazaarModule $a, BazaarModule $b): int => strcmp($a->category, $b->category));
+                break;
+        }
+
+        asort($categories);
+
+        return $this->render('@bazaar/views/admin/index', [
+            'modules'    => array_values($modules),
             'categories' => $categories,
-            'search' => $search,
-            'category' => $category,
-            'sort' => $sort,
         ]);
     }
 
+    // =========================================================================
+    // Module Detail
+    // =========================================================================
+
     /**
-     * View module details
-     * @param string $id
-     * @return string
-     * @throws NotFoundHttpException
+     * Shows detail for a single module.
+     *
+     * @param string $id  Module ID (numeric string or slug for coming-soon modules)
      */
-    public function actionView($id)
+    public function actionView(string $id): string
     {
-        $moduleData = $this->apiService->getModule($id);
-        
-        if (!$moduleData) {
-            throw new NotFoundHttpException('Module not found');
-        }
-
-        // FIXED: Ensure we have a Module object with proper price handling
-        if (is_array($moduleData)) {
-            $module = Module::fromArray($moduleData);
-        } else {
-            $module = $moduleData;
-        }
-
-        return $this->render('view', [
-            'module' => $module,
+        return $this->render('@bazaar/views/admin/view', [
+            'module' => $this->findModule($id),
         ]);
     }
 
+    // =========================================================================
+    // Purchase Flow
+    // =========================================================================
+
     /**
-     * Purchase module
-     * @param string $id
-     * @return string|Response
-     * @throws NotFoundHttpException
+     * GET  – Purchase confirmation / checkout page.
+     * POST – Creates a Stripe Checkout session via the Green Meteor API and
+     *        redirects the user to the Stripe-hosted payment page.
+     *
+     * @param string $id  Module ID
      */
-    public function actionPurchase($id)
+    public function actionPurchase(string $id): \yii\web\Response|string
     {
-        $moduleData = $this->apiService->getModule($id);
-        
-        if (!$moduleData) {
-            throw new NotFoundHttpException('Module not found');
+        $bazaarModule = Yii::$app->getModule('bazaar');
+        $module       = $this->findModule($id);
+
+        if (!$bazaarModule->enablePurchasing) {
+            $this->view->error(Yii::t('BazaarModule.base', 'Purchasing is currently disabled.'));
+            return $this->redirect(['/bazaar/admin/view', 'id' => $id]);
         }
 
-        // FIXED: Convert to Module object for consistent handling
-        if (is_array($moduleData)) {
-            $module = Module::fromArray($moduleData);
-        } else {
-            $module = $moduleData;
-        }
-
-        // Check if module is available for purchase
-        if (!$module->isAvailableForPurchase()) {
-            Yii::$app->session->addFlash('error', 
-                Yii::t('BazaarModule.base', 'This module is not available for purchase'));
-            return $this->redirect(['view', 'id' => $id]);
+        if ($module->isPurchased) {
+            return $this->redirect(['/bazaar/admin/purchase-success', 'id' => $id]);
         }
 
         if (Yii::$app->request->isPost) {
+            $apiService = $bazaarModule->getApiService();
+
+            $returnUrl = Yii::$app->urlManager->createAbsoluteUrl([
+                '/bazaar/admin/purchase-success', 'id' => $id,
+            ]);
+            $cancelUrl = Yii::$app->urlManager->createAbsoluteUrl([
+                '/bazaar/admin/purchase', 'id' => $id,
+            ]);
+
             try {
-                $options = [
-                    'return_url' => Yii::$app->request->hostInfo . '/bazaar/admin/purchase-success?id=' . $id,
-                    'cancel_url' => Yii::$app->request->hostInfo . '/bazaar/admin/view?id=' . $id,
-                ];
+                $result = $apiService->purchaseModule($module->id, [
+                    'return_url' => $returnUrl,
+                    'cancel_url' => $cancelUrl,
+                ]);
 
-                $result = $this->apiService->purchaseModule($id, $options);
-
-                if (isset($result['checkout_url'])) {
+                if (!empty($result['checkout_url'])) {
+                    Yii::info("Redirecting to Stripe checkout: {$result['checkout_url']}", 'bazaar');
                     return $this->redirect($result['checkout_url']);
-                } elseif (isset($result['is_free']) && $result['is_free']) {
-                    Yii::$app->session->addFlash('success', 
-                        Yii::t('BazaarModule.base', 'Module downloaded successfully'));
-                    return $this->redirect($result['download_url']);
                 }
 
-            } catch (\Exception $e) {
-                Yii::error('Purchase error: ' . $e->getMessage(), 'bazaar');
-                Yii::$app->session->addFlash('error', 
-                    Yii::t('BazaarModule.base', 'Purchase failed: {error}', ['error' => $e->getMessage()]));
+                if (!empty($result['is_free'])) {
+                    return $this->redirect(['/bazaar/admin/purchase-success', 'id' => $id]);
+                }
+
+                Yii::error('Unexpected purchase API response: ' . json_encode($result), 'bazaar');
+                $this->view->error(Yii::t('BazaarModule.base', 'Failed to initiate purchase. Please try again.'));
+
+            } catch (\Throwable $e) {
+                Yii::error('Purchase exception: ' . $e->getMessage(), 'bazaar');
+                $this->view->error(Yii::t('BazaarModule.base', 'Purchase failed: {error}', ['error' => $e->getMessage()]));
             }
         }
 
-        return $this->render('purchase', [
+        return $this->render('@bazaar/views/admin/purchase', [
             'module' => $module,
         ]);
     }
 
     /**
-     * Purchase success callback
-     * @param string $id
-     * @return string|Response
+     * Stripe redirects here after a successful payment with ?session_id=cs_xxx.
+     * Verifies the session with the Green Meteor API and updates the module.
+     *
+     * @param string      $id         Module ID
+     * @param string|null $session_id Stripe Checkout Session ID
      */
-    public function actionPurchaseSuccess($id)
+    public function actionPurchaseSuccess(string $id, ?string $session_id = null): \yii\web\Response|string
     {
-        $sessionId = Yii::$app->request->get('session_id');
-        $verified = false;
-        $verificationError = null;
-        
-        if ($sessionId) {
-            // Verify purchase with API
-            $verificationResult = $this->apiService->verifyPurchase($sessionId);
-            $verified = $verificationResult['verified'] ?? false;
-            $verificationError = $verificationResult['error'] ?? null;
-            
-            if ($verified) {
-                $this->apiService->clearCache(); // Clear cache to refresh purchase status
-                Yii::$app->session->addFlash('success', 
-                    Yii::t('BazaarModule.base', 'Purchase verified and completed successfully!'));
-            } else {
-                Yii::$app->session->addFlash('warning', 
-                    Yii::t('BazaarModule.base', 'Purchase verification pending. Please contact support if issues persist.'));
-                if ($verificationError) {
-                    Yii::error('Purchase verification failed: ' . $verificationError, 'bazaar');
+        $module     = $this->findModule($id);
+        $verified   = false;
+        $apiService = Yii::$app->getModule('bazaar')->getApiService();
+
+        // Path A: fresh Stripe redirect — session_id present
+        if ($session_id !== null) {
+            try {
+                $result   = $apiService->verifyPurchase($session_id);
+                $verified = (bool)($result['verified'] ?? false);
+
+                if ($verified) {
+                    $module->isPurchased = true;
+                    $module->downloadUrl = $result['download_url']
+                        ?? "https://greenmeteor.net/download?module={$module->id}";
+
+                    // Bust the per-user catalogue cache so the next page load
+                    // reflects the confirmed purchase without waiting for TTL.
+                    Yii::$app->cache->delete('bazaar_modules_' . md5(
+                        (string)(Yii::$app->user->identity->email ?? '')
+                    ));
+
+                    Yii::info("Purchase verified for module {$id}, session {$session_id}", 'bazaar');
+                } else {
+                    $this->view->error(Yii::t('BazaarModule.base', 'Payment could not be verified. Please contact support.'));
                 }
+
+            } catch (\Throwable $e) {
+                Yii::error('Purchase verification error: ' . $e->getMessage(), 'bazaar');
+                $this->view->error(Yii::t('BazaarModule.base', 'Verification error: {error}', ['error' => $e->getMessage()]));
             }
         } else {
-            Yii::$app->session->addFlash('info', 
-                Yii::t('BazaarModule.base', 'Purchase completed! Downloads will be available once payment is processed.'));
+            // Path B: user already owns the module (direct navigation or free module)
+            $verified = $module->isPurchased;
+
+            if (!$verified) {
+                $verified = $apiService->checkPurchaseStatus((string)$module->id);
+                if ($verified) {
+                    $module->isPurchased = true;
+                    $module->downloadUrl = "https://greenmeteor.net/download?module={$module->id}";
+                }
+            }
         }
 
-        $moduleData = $this->apiService->getModule($id);
-        
-        if (is_array($moduleData)) {
-            $module = Module::fromArray($moduleData);
-        } else {
-            $module = $moduleData;
-        }
-
-        return $this->render('purchase-success', [
-            'module' => $module,
-            'sessionId' => $sessionId,
+        return $this->render('@bazaar/views/admin/purchase-success', [
+            'module'   => $module,
             'verified' => $verified,
         ]);
     }
 
+    // =========================================================================
+    // Install
+    // =========================================================================
+
     /**
-     * Configure module settings
-     * @return string|Response
+     * Downloads and installs a module ZIP into the HumHub modules directory.
+     * Requires the module to already be purchased or free.
+     *
+     * @param string $id  Module ID
      */
-    public function actionConfig()
+    public function actionInstall(string $id): \yii\web\Response
     {
-        $model = new \humhub\modules\bazaar\models\ConfigureForm();
-        $model->loadFromModule();
-        
-        if (Yii::$app->request->isPost && $model->load(Yii::$app->request->post())) {
-            if ($model->save()) {
-                Yii::$app->session->addFlash('success', 
-                    Yii::t('BazaarModule.base', 'Configuration saved successfully'));
-                
-                // Clear cache after config changes
-                $this->apiService->clearCache();
-                
-                return $this->redirect(['config']);
-            }
+        $module = $this->findModule($id);
+
+        if ($module->isSoon) {
+            $this->view->error(Yii::t('BazaarModule.base', 'This module is not yet available.'));
+            return $this->redirect(['/bazaar/admin/view', 'id' => $id]);
         }
 
-        return $this->render('config', [
+        if ($module->isPaid && !$module->isPurchased) {
+            $this->view->error(Yii::t('BazaarModule.base', 'You must purchase this module before installing it.'));
+            return $this->redirect(['/bazaar/admin/purchase', 'id' => $id]);
+        }
+
+        if (empty($module->downloadUrl)) {
+            $this->view->error(Yii::t('BazaarModule.base', 'No download URL is available for this module.'));
+            return $this->redirect(['/bazaar/admin/view', 'id' => $id]);
+        }
+
+        try {
+            $result = $this->downloadAndInstall($module);
+
+            if ($result['success']) {
+                $this->view->success(Yii::t('BazaarModule.base',
+                    '"{name}" has been installed. Enable it under Administration → Modules.',
+                    ['name' => $module->name]
+                ));
+            } else {
+                $this->view->error($result['error'] ?? Yii::t('BazaarModule.base', 'Installation failed.'));
+            }
+
+        } catch (\Throwable $e) {
+            Yii::error('Module install exception: ' . $e->getMessage(), 'bazaar');
+            $this->view->error(Yii::t('BazaarModule.base', 'Installation error: {error}', ['error' => $e->getMessage()]));
+        }
+
+        return $this->redirect(['/bazaar/admin/view', 'id' => $id]);
+    }
+
+    /**
+     * Tests the Green Meteor API connection and returns JSON.
+     * Bypasses the cache so the result always reflects the live API state.
+     *
+     * Returns: { success: bool, message: string, count?: int }
+     */
+    public function actionTestConnection(): array
+    {
+        Yii::$app->response->format = \yii\web\Response::FORMAT_JSON;
+
+        try {
+            $apiService  = Yii::$app->getModule('bazaar')->getApiService();
+            $modulesData = $apiService->getModules(
+                (string)(Yii::$app->user->identity->email ?? '')
+            );
+
+            if (!empty($modulesData)) {
+                Yii::$app->cache->delete('bazaar_modules_' . md5(
+                    (string)(Yii::$app->user->identity->email ?? '')
+                ));
+
+                return [
+                    'success' => true,
+                    'message' => Yii::t('BazaarModule.base',
+                        'Connection successful. {count} modules found.',
+                        ['count' => count($modulesData)]
+                    ),
+                    'count'   => count($modulesData),
+                ];
+            }
+
+            return [
+                'success' => false,
+                'message' => Yii::t('BazaarModule.base',
+                    'Connected but the API returned an empty module list. Check the greenmeteor.net server error log.'
+                ),
+            ];
+
+        } catch (\Throwable $e) {
+            Yii::error('Test connection failed: ' . $e->getMessage(), 'bazaar');
+            return [
+                'success' => false,
+                'message' => Yii::t('BazaarModule.base',
+                    'Connection failed: {error}', ['error' => $e->getMessage()]
+                ),
+            ];
+        }
+    }
+
+    /**
+     * GET  – Shows the Bazaar configuration form.
+     * POST – Saves settings and redirects to the module index.
+     */
+    public function actionConfig(): \yii\web\Response|string
+    {
+        $model = new ConfigureForm();
+        $model->loadSettings();
+
+        if ($model->load(Yii::$app->request->post()) && $model->save()) {
+            Yii::$app->cache->delete('bazaar_modules_' . md5(
+                (string)(Yii::$app->user->identity->email ?? '')
+            ));
+
+            $this->view->saved();
+            return $this->redirect(['/bazaar/admin/index']);
+        }
+
+        return $this->render('@bazaar/views/admin/config', [
             'model' => $model,
         ]);
     }
 
     /**
-     * Clear module cache
-     * @return Response
+     * Flushes the entire application cache, forcing a fresh API fetch for all
+     * users on their next request. Accepts GET (link) and POST (AJAX).
+     * Uses a full flush because per-user cache keys cannot be enumerated.
      */
-    public function actionClearCache()
+    public function actionClearCache(): \yii\web\Response|array
     {
-        $this->apiService->clearCache();
-        
-        Yii::$app->session->addFlash('success', 
-            Yii::t('BazaarModule.base', 'Cache cleared successfully'));
-        
-        return $this->redirect(['index']);
+        Yii::$app->cache->flush();
+
+        $this->view->success(Yii::t('BazaarModule.base', 'Cache cleared successfully!'));
+
+        return $this->redirect(['/bazaar/admin/index']);
     }
 
     /**
-     * Test API connection
-     * @return array
+     * @throws NotFoundHttpException
      */
-    public function actionTestApi()
+    private function findModule(string $id): BazaarModule
     {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-        
-        try {
-            // Get API settings from POST (from config form) or use current module settings
-            $apiUrl = Yii::$app->request->post('api_url');
-            $apiKey = Yii::$app->request->post('api_key');
-            
-            if (!$apiUrl) {
-                $module = Yii::$app->getModule('bazaar');
-                $apiUrl = $module->apiBaseUrl ?? 'https://greenmeteor.net/api/modules.php';
-                $apiKey = $module->apiKey ?? '';
-            }
-            
-            // Create test client with provided settings
-            $client = new \yii\httpclient\Client([
-                'baseUrl' => $apiUrl,
-            ]);
-            
-            $headers = [
-                'Accept' => 'application/json',
-                'User-Agent' => 'HumHub-Bazaar/1.0',
-            ];
-            
-            if ($apiKey) {
-                $headers['Authorization'] = 'Bearer ' . $apiKey;
-            }
-            
-            $response = $client->get('', [
-                'action' => 'list',
-                'format' => 'json',
-            ])->setHeaders($headers)->send();
-            
-            if ($response->isOk) {
-                $data = $response->getData();
-                if (isset($data['success']) && $data['success']) {
-                    return [
-                        'success' => true,
-                        'message' => Yii::t('BazaarModule.base', 'API connection successful - Found {count} modules', [
-                            'count' => count($data['data'] ?? [])
-                        ]),
-                    ];
-                } else {
-                    return [
-                        'success' => false,
-                        'message' => Yii::t('BazaarModule.base', 'API responded but returned an error: {error}', [
-                            'error' => $data['error'] ?? 'Unknown error'
-                        ]),
-                    ];
-                }
-            } else {
-                return [
-                    'success' => false,
-                    'message' => Yii::t('BazaarModule.base', 'API connection failed: HTTP {code}', [
-                        'code' => $response->statusCode
-                    ]),
-                ];
-            }
-            
-        } catch (\Exception $e) {
-            return [
-                'success' => false,
-                'message' => Yii::t('BazaarModule.base', 'API connection failed: {error}', [
-                    'error' => $e->getMessage()
-                ]),
-            ];
+        $module = Yii::$app->getModule('bazaar')->getApiService()->getModule($id);
+
+        if ($module === null) {
+            throw new NotFoundHttpException(
+                Yii::t('BazaarModule.base', 'The requested module could not be found.')
+            );
         }
+
+        return $module;
     }
 
     /**
-     * Debug action to see raw API data - Add this to AdminController.php temporarily
-     * @return string
+     * Downloads the module ZIP and extracts it to the HumHub modules directory.
+     *
+     * @param  BazaarModule $module
+     * @return array{success: bool, error?: string}
      */
-    public function actionDebugApi()
+    private function downloadAndInstall(BazaarModule $module): array
     {
-        Yii::$app->response->format = Response::FORMAT_JSON;
-        
-        try {
-            // Get raw API response
-            $response = $this->apiService->_client->get('', [
-                'action' => 'list',
-                'format' => 'json',
-            ])->send();
-            
-            if ($response->isOk) {
-                $rawData = $response->getData();
-                
-                // Show first module's raw data for debugging
-                $firstModule = $rawData['data'][0] ?? null;
-                
-                return [
-                    'success' => true,
-                    'raw_response' => $rawData,
-                    'first_module_raw' => $firstModule,
-                    'first_module_price' => $firstModule['price'] ?? 'NOT SET',
-                    'first_module_is_paid' => $firstModule['is_paid'] ?? 'NOT SET',
-                    'first_module_type_price' => gettype($firstModule['price'] ?? null),
-                    'first_module_type_is_paid' => gettype($firstModule['is_paid'] ?? null),
-                ];
-            } else {
-                return [
-                    'success' => false,
-                    'error' => 'HTTP ' . $response->statusCode,
-                ];
-            }
-            
-        } catch (\Exception $e) {
+        $modulesPath = Yii::getAlias('@app') . '/modules/';
+
+        if (!is_dir($modulesPath) || !is_writable($modulesPath)) {
             return [
                 'success' => false,
-                'error' => $e->getMessage(),
+                'error'   => Yii::t('BazaarModule.base',
+                    'Modules directory is not writable: {path}', ['path' => $modulesPath]
+                ),
             ];
         }
+
+        $tempFile = tempnam(sys_get_temp_dir(), 'bazaar_') . '.zip';
+
+        $ch = curl_init($module->downloadUrl);
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_TIMEOUT => 120,
+            CURLOPT_USERAGENT => 'HumHub-Bazaar/1.0',
+            CURLOPT_HTTPHEADER => ['Accept: application/zip, application/octet-stream'],
+        ]);
+
+        $content  = curl_exec($ch);
+        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        $curlErr  = curl_error($ch);
+        curl_close($ch);
+
+        if ($curlErr !== '' || $httpCode !== 200) {
+            @unlink($tempFile);
+            return [
+                'success' => false,
+                'error' => Yii::t('BazaarModule.base',
+                    'Download failed (HTTP {code}){error}',
+                    ['code' => $httpCode, 'error' => $curlErr ? ": $curlErr" : '']
+                ),
+            ];
+        }
+
+        if (file_put_contents($tempFile, $content) === false) {
+            return ['success' => false, 'error' => Yii::t('BazaarModule.base', 'Could not save downloaded file.')];
+        }
+
+        $zip = new \ZipArchive();
+        $res = $zip->open($tempFile);
+
+        if ($res !== true) {
+            @unlink($tempFile);
+            return [
+                'success' => false,
+                'error'   => Yii::t('BazaarModule.base', 'Failed to open ZIP (code: {code}).', ['code' => $res]),
+            ];
+        }
+
+        $zip->extractTo($modulesPath);
+        $zip->close();
+        @unlink($tempFile);
+
+        Yii::$app->cache->flush();
+        Yii::info("Module '{$module->id}' installed to {$modulesPath}", 'bazaar');
+
+        return ['success' => true];
     }
 }
