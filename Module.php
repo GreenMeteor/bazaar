@@ -2,49 +2,57 @@
 
 namespace humhub\modules\bazaar;
 
+use Yii;
+use yii\helpers\Url;
 use humhub\components\Module as BaseModule;
 use humhub\modules\admin\permissions\ManageSettings;
-use humhub\modules\bazaar\models\ConfigureForm;
 
+/**
+ * Bazaar Module
+ *
+ * Provides a storefront inside the HumHub admin panel for browsing and
+ * purchasing Green Meteor modules. Paid modules are processed via Stripe
+ * Checkout hosted on greenmeteor.net.
+ */
 class Module extends BaseModule
 {
     /**
-     * @var string Green Meteor API base URL
+     * @var string Green Meteor modules API endpoint
      */
-    public $apiBaseUrl = 'https://greenmeteor.net';
+    public string $apiBaseUrl = 'https://greenmeteor.net/api/modules.php';
 
     /**
-     * @var string API key for authentication (not needed for Green Meteor integration)
+     * @var string Optional API key (not required for the public module list)
      */
-    public $apiKey = '';
+    public string $apiKey = '';
 
     /**
-     * @var int Cache duration in seconds (default: 1 hour)
+     * @var int How long (in seconds) to cache the module catalogue. Default 1 hour.
      */
-    public $cacheTimeout = 3600;
+    public int $cacheTimeout = 3600;
 
     /**
-     * @var bool Enable module purchasing functionality
+     * @var bool Allow admins to initiate purchases from this interface.
      */
-    public $enablePurchasing = true;
+    public bool $enablePurchasing = true;
 
     /**
-     * @var bool Use Green Meteor domain as API endpoint (default: true)
+     * @var bool Route all requests through the Green Meteor API domain.
      */
-    public $useGreenMeteorApi = true;
+    public bool $useGreenMeteorApi = true;
 
     /**
      * @inheritdoc
      */
-    public function getConfigUrl()
+    public function getConfigUrl(): string
     {
-        return \yii\helpers\Url::to(['/bazaar/admin/config']);
+        return Url::to(['/bazaar/admin/config']);
     }
 
     /**
      * @inheritdoc
      */
-    public function getPermissions($contentContainer = null)
+    public function getPermissions($contentContainer = null): array
     {
         if ($contentContainer !== null) {
             return [];
@@ -56,15 +64,25 @@ class Module extends BaseModule
     }
 
     /**
-     * Get service for API communication
+     * Returns a configured ApiService instance.
+     *
+     * Settings are read from the HumHub settings manager (persisted via
+     * ConfigureForm) and override the module-level defaults.
+     *
      * @return \humhub\modules\bazaar\services\ApiService
      */
-    public function getApiService()
+    public function getApiService(): \humhub\modules\bazaar\services\ApiService
     {
-        return \Yii::createObject([
+        $settings = $this->settings;
+
+        $baseUrl = $settings->get('apiBaseUrl', $this->apiBaseUrl);
+        $apiKey = $settings->get('apiKey', $this->apiKey);
+        $cacheTimeout = (int)$settings->get('cacheTimeout', $this->cacheTimeout);
+
+        return Yii::createObject([
             'class' => 'humhub\modules\bazaar\services\ApiService',
-            'baseUrl' => $this->apiBaseUrl,
-            'apiKey' => $this->apiKey,
+            'baseUrl' => $baseUrl,
+            'apiKey' => $apiKey,
             'useGreenMeteorApi' => $this->useGreenMeteorApi,
         ]);
     }

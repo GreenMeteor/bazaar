@@ -3,7 +3,6 @@
 namespace humhub\modules\bazaar\models;
 
 use Yii;
-use humhub\components\SettingsManager;
 
 class ConfigureForm extends \yii\base\Model
 {
@@ -46,7 +45,7 @@ class ConfigureForm extends \yii\base\Model
     {
         $settings = Yii::$app->getModule('bazaar')->settings;
 
-        $this->apiBaseUrl = $settings->get('apiBaseUrl', 'https://api.greenmeteor.net/v1');
+        $this->apiBaseUrl = $settings->get('apiBaseUrl', 'https://greenmeteor.net/api/modules');
         $this->apiKey = $settings->get('apiKey', '');
         $this->cacheTimeout = (int)$settings->get('cacheTimeout', 3600);
         $this->enablePurchasing = (bool)$settings->get('enablePurchasing', true);

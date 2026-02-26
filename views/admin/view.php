@@ -3,7 +3,7 @@
 use humhub\widgets\bootstrap\Button;
 use humhub\widgets\bootstrap\Badge;
 use humhub\modules\ui\icon\widgets\Icon;
-use yii\helpers\Html;
+use humhub\helpers\Html;
 use humhub\modules\bazaar\assets\BazaarAsset;
 
 BazaarAsset::register($this);
@@ -25,7 +25,7 @@ BazaarAsset::register($this);
 
     <div class="panel-body">
         <div class="row">
-            <!-- Module Images -->
+
             <div class="col-md-5">
                 <?php if (!empty($module->screenshots)): ?>
                     <div id="moduleCarousel" class="carousel slide mb-4" data-bs-ride="carousel">
@@ -34,34 +34,36 @@ BazaarAsset::register($this);
                                 <div class="carousel-item <?= $index === 0 ? 'active' : '' ?>">
                                     <?= Html::img($screenshot, [
                                         'class' => 'd-block w-100 rounded',
-                                        'alt' => 'Screenshot ' . ($index + 1),
-                                        'style' => 'height: 300px; object-fit: cover;'
+                                        'alt'   => Html::encode(Yii::t('BazaarModule.base', 'Screenshot {n}', ['n' => $index + 1])),
+                                        'style' => 'height:300px;object-fit:cover;',
                                     ]) ?>
                                 </div>
                             <?php endforeach; ?>
                         </div>
 
                         <?php if (count($module->screenshots) > 1): ?>
-                            <button class="carousel-control-prev" type="button" data-bs-target="#moduleCarousel" data-bs-slide="prev">
+                            <button class="carousel-control-prev" type="button"
+                                    data-bs-target="#moduleCarousel" data-bs-slide="prev">
                                 <span class="carousel-control-prev-icon"></span>
                                 <span class="visually-hidden"><?= Yii::t('BazaarModule.base', 'Previous') ?></span>
                             </button>
-                            <button class="carousel-control-next" type="button" data-bs-target="#moduleCarousel" data-bs-slide="next">
+                            <button class="carousel-control-next" type="button"
+                                    data-bs-target="#moduleCarousel" data-bs-slide="next">
                                 <span class="carousel-control-next-icon"></span>
                                 <span class="visually-hidden"><?= Yii::t('BazaarModule.base', 'Next') ?></span>
                             </button>
                         <?php endif; ?>
                     </div>
                 <?php else: ?>
-                    <div class="placeholder-image d-flex align-items-center justify-content-center bg-light rounded mb-4" 
-                         style="height: 300px;">
+                    <div class="placeholder-image d-flex align-items-center justify-content-center bg-light rounded mb-4"
+                         style="height:300px;">
                         <?= Icon::get('puzzle-piece') ?>
                     </div>
                 <?php endif; ?>
             </div>
 
-            <!-- Module Information -->
             <div class="col-md-7">
+
                 <div class="d-flex justify-content-between align-items-start mb-3">
                     <div>
                         <h2 class="mb-1"><?= Html::encode($module->name) ?></h2>
@@ -73,7 +75,6 @@ BazaarAsset::register($this);
                     <?= Badge::secondary($module->getCategoryLabel())->lg() ?>
                 </div>
 
-                <!-- Badges -->
                 <div class="mb-3">
                     <?php if ($module->isSoon): ?>
                         <?= Badge::warning(Yii::t('BazaarModule.base', 'Coming Soon'))->lg() ?>
@@ -86,11 +87,10 @@ BazaarAsset::register($this);
                     <?php endif; ?>
                 </div>
 
-                <!-- Price and Download/Purchase -->
                 <div class="mb-4 d-flex align-items-center justify-content-between">
                     <div class="price-display">
                         <?php if ($module->isPaid && !$module->isPurchased): ?>
-                            <h3 class="text-primary mb-0"><?= $module->getFormattedPrice() ?></h3>
+                            <h3 class="text-primary mb-0"><?= Html::encode($module->getFormattedPrice()) ?></h3>
                         <?php elseif (!$module->isPaid): ?>
                             <h3 class="text-success mb-0"><?= Yii::t('BazaarModule.base', 'Free') ?></h3>
                         <?php endif; ?>
@@ -101,46 +101,48 @@ BazaarAsset::register($this);
                             <div class="btn-group" role="group">
                                 <?= Button::primary(Yii::t('BazaarModule.base', 'Install'))
                                     ->link(['/bazaar/admin/install', 'id' => $module->id])
+                                    ->loader(false)
                                     ->icon('cog')
-                                    ->options([
-                                        'data-confirm' => Yii::t('BazaarModule.base', 'This will download and install the module. Continue?')
-                                    ]) ?>
+                                    ->options(['data-confirm' => Yii::t('BazaarModule.base', 'This will download and install the module. Continue?')]) ?>
                                 <?= Button::secondary(Yii::t('BazaarModule.base', 'Download Only'))
                                     ->link($module->downloadUrl)
+                                    ->loader(false)
                                     ->icon('download')
                                     ->options(['target' => '_blank'])
                                     ->sm() ?>
                             </div>
+
                         <?php elseif ($module->isPaid && !$module->isSoon): ?>
                             <?= Button::primary(Yii::t('BazaarModule.base', 'Purchase'))
                                 ->link(['/bazaar/admin/purchase', 'id' => $module->id])
+                                ->loader(false)
                                 ->icon('shopping-cart') ?>
+
                         <?php elseif (!$module->isPaid && $module->downloadUrl): ?>
                             <div class="btn-group" role="group">
                                 <?= Button::success(Yii::t('BazaarModule.base', 'Install'))
                                     ->link(['/bazaar/admin/install', 'id' => $module->id])
                                     ->icon('cog')
-                                    ->options([
-                                        'data-confirm' => Yii::t('BazaarModule.base', 'This will download and install the module. Continue?')
-                                    ]) ?>
+                                    ->options(['data-confirm' => Yii::t('BazaarModule.base', 'This will download and install the module. Continue?')]) ?>
                                 <?= Button::secondary(Yii::t('BazaarModule.base', 'Download Only'))
                                     ->link($module->downloadUrl)
                                     ->icon('download')
                                     ->options(['target' => '_blank'])
+                                    ->loader(false)
                                     ->sm() ?>
                             </div>
+
                         <?php else: ?>
                             <?= Button::secondary(Yii::t('BazaarModule.base', 'Not Available'))
                                 ->icon('ban')
-                                ->options(['disabled' => true]) ?>
+                                ->disabled() ?>
                         <?php endif; ?>
                     </div>
                 </div>
 
-                <!-- Installation Instructions -->
                 <?php if (($module->isPurchased && $module->downloadUrl) || (!$module->isPaid && $module->downloadUrl)): ?>
                     <div class="alert alert-info mb-4">
-                        <h6><?= Icon::get('info-circle') ?> <?= Yii::t('BazaarModule.base', 'Installation Instructions') ?></h6>
+                        <h6><?= Icon::get('info-circle') ?><?= Yii::t('BazaarModule.base', 'Installation Instructions') ?></h6>
                         <ol class="mb-0 small">
                             <li><?= Yii::t('BazaarModule.base', 'Download the module zip file') ?></li>
                             <li><?= Yii::t('BazaarModule.base', 'Extract to your HumHub modules directory: /protected/modules/') ?></li>
@@ -150,13 +152,13 @@ BazaarAsset::register($this);
                     </div>
                 <?php endif; ?>
 
-                <!-- Description -->
-                <div class="mb-4">
-                    <h5><?= Yii::t('BazaarModule.base', 'Description') ?></h5>
-                    <p><?= Html::encode($module->description ?? '') ?></p>
-                </div>
+                <?php if (!empty($module->description)): ?>
+                    <div class="mb-4">
+                        <h5><?= Yii::t('BazaarModule.base', 'Description') ?></h5>
+                        <p><?= Html::encode($module->description) ?></p>
+                    </div>
+                <?php endif; ?>
 
-                <!-- Features -->
                 <?php if (!empty($module->features)): ?>
                     <div class="mb-4">
                         <h5><?= Yii::t('BazaarModule.base', 'Features') ?></h5>
@@ -171,7 +173,6 @@ BazaarAsset::register($this);
                     </div>
                 <?php endif; ?>
 
-                <!-- Requirements -->
                 <?php if (!empty($module->requirements)): ?>
                     <div class="mb-4">
                         <h5><?= Yii::t('BazaarModule.base', 'Requirements') ?></h5>
@@ -185,6 +186,7 @@ BazaarAsset::register($this);
                         </ul>
                     </div>
                 <?php endif; ?>
+
             </div>
         </div>
     </div>
