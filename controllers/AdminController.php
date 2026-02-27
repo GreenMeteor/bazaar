@@ -349,14 +349,27 @@ class AdminController extends Controller
      * users on their next request. Accepts GET (link) and POST (AJAX).
      * Uses a full flush because per-user cache keys cannot be enumerated.
      */
-    public function actionClearCache(): \yii\web\Response|array
-    {
-        Yii::$app->cache->flush();
+public function actionClearCache(): \yii\web\Response
+{
+    Yii::$app->response->on(\yii\web\Response::EVENT_AFTER_SEND, function () {
+        try {
+            \humhub\modules\admin\libs\CacheHelper::flushCache();
+        } catch (\Throwable $e) {
+            Yii::error("Cache flush failed: " . $e->getMessage(), __METHOD__);
+        }
+    });
 
-        $this->view->success(Yii::t('BazaarModule.base', 'Cache cleared successfully!'));
+    $this->view->success(Yii::t('BazaarModule.base', 'Cache cleared successfully!'));
 
-        return $this->redirect(['/bazaar/admin/index']);
+    if (Yii::$app->request->isAjax) {
+        return $this->asJson([
+            'success' => true,
+            'message' => Yii::t('BazaarModule.base', 'Cache cleared successfully!')
+        ]);
     }
+
+    return $this->redirect(['/bazaar/admin/index']);
+}
 
     /**
      * @throws NotFoundHttpException
