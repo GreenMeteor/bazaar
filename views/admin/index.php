@@ -1,6 +1,5 @@
 <?php
 
-use humhub\widgets\form\ActiveForm;
 use humhub\widgets\bootstrap\Button;
 use humhub\widgets\bootstrap\Badge;
 use humhub\modules\ui\icon\widgets\Icon;
