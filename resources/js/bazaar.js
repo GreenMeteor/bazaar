@@ -10,6 +10,90 @@ humhub.module('bazaar', function(module, require, $) {
         bindClearCache();
     };
 
+    var bindFilters = function() {
+        var searchTimeout;
+
+        $(document).on('submit', '#bazaar-filter-form', function(e) {
+            e.preventDefault();
+            filterModules();
+        });
+
+        $(document).on('input', '#bazaar-search', function() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(filterModules, 300);
+        });
+
+        $(document).on('change', '#bazaar-category', function() {
+            filterModules();
+        });
+
+        $(document).on('change', '#bazaar-sort', function() {
+            filterModules();
+        });
+    };
+
+    var filterModules = function() {
+        var search = ($('#bazaar-search').val() || '').toLowerCase().trim();
+        var category = ($('#bazaar-category').val() || '');
+        var sort = ($('#bazaar-sort').val() || '');
+
+        var $container = $('.modules-container');
+        var $allCols = $container.find('.col-lg-4, .col-md-6');
+        var anyVisible = false;
+
+        $allCols.each(function() {
+            var $card = $(this).find('.module-card');
+            var cardCategory = $card.data('category') || '';
+            var title = $card.find('.card-title').text().toLowerCase();
+            var description = $card.find('.card-text').first().text().toLowerCase();
+
+            var matchesSearch = !search || title.indexOf(search) !== -1 || description.indexOf(search) !== -1;
+            var matchesCategory = !category || cardCategory === category;
+
+            var visible = matchesSearch && matchesCategory;
+            $(this).toggleClass('d-none', !visible);
+
+            if (visible) {
+                anyVisible = true;
+            }
+        });
+
+        if (sort !== '') {
+            var $visibleCols = $allCols.not('.d-none').toArray();
+
+            $visibleCols.sort(function(a, b) {
+                var $ca = $(a).find('.module-card');
+                var $cb = $(b).find('.module-card');
+
+                if (sort === 'name') {
+                    var na = $ca.find('.card-title').text().trim().toLowerCase();
+                    var nb = $cb.find('.card-title').text().trim().toLowerCase();
+                    return na < nb ? -1 : na > nb ? 1 : 0;
+                }
+
+                if (sort === 'price') {
+                    var pa = parseFloat($ca.data('price')) || 0;
+                    var pb = parseFloat($cb.data('price')) || 0;
+                    return pa - pb;
+                }
+
+                if (sort === 'category') {
+                    var ca = ($ca.data('category') || '').toLowerCase();
+                    var cb = ($cb.data('category') || '').toLowerCase();
+                    return ca < cb ? -1 : ca > cb ? 1 : 0;
+                }
+
+                return 0;
+            });
+
+            $.each($visibleCols, function(i, el) {
+                $container.append(el);
+            });
+        }
+
+        $('.no-results').toggleClass('d-none', anyVisible);
+    };
+
     var bindCardHover = function() {
         $(document).on('mouseenter', '.module-card', function() {
             $(this).addClass('shadow-lg');

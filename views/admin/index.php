@@ -14,9 +14,9 @@ BazaarAsset::register($this);
 /* @var $modules \humhub\modules\bazaar\models\Module[] */
 /* @var $categories array */
 
-$currentSearch = Yii::$app->request->get('search',   '');
+$currentSearch = Yii::$app->request->get('search', '');
 $currentCategory = Yii::$app->request->get('category', '');
-$currentSort = Yii::$app->request->get('sort',     '');
+$currentSort = Yii::$app->request->get('sort', '');
 ?>
 
 <div class="panel panel-default">
@@ -26,6 +26,7 @@ $currentSort = Yii::$app->request->get('sort',     '');
         <div class="float-end">
             <?= Button::primary(Yii::t('BazaarModule.base', 'Configure'))
                 ->link(['/bazaar/admin/config'])
+                ->loader(false)
                 ->icon('cog')->sm() ?>
 
             <?= Button::secondary(Yii::t('BazaarModule.base', 'Clear Cache'))
@@ -33,20 +34,28 @@ $currentSort = Yii::$app->request->get('sort',     '');
                     'data-action' => 'clearCache',
                     'data-action-url' => Url::to(['/bazaar/admin/clear-cache']),
                 ])
+                ->loader(false)
                 ->icon('refresh')->sm() ?>
         </div>
     </div>
 
     <div class="panel-body">
 
-        <form method="get" action="<?= Url::to(['/bazaar/admin/index']) ?>" id="bazaar-filter-form">
+        <?php $form = ActiveForm::begin([
+            'id' => 'bazaar-filter-form',
+            'method' => 'get',
+            'action' => Url::to(['/bazaar/admin/index']),
+            'options' => ['data-ui-addition' => false],
+        ]); ?>
+
             <div class="row mb-4">
                 <div class="col-md-6">
                     <div class="input-group">
                         <?= Html::textInput('search', $currentSearch, [
-                            'id' => 'module-search',
+                            'id' => 'bazaar-search',
                             'class' => 'form-control',
                             'placeholder' => Yii::t('BazaarModule.base', 'Search modules…'),
+                            'autocomplete' => 'off',
                         ]) ?>
                         <button class="btn btn-outline-secondary" type="submit">
                             <?= Icon::get('search') ?>
@@ -59,7 +68,7 @@ $currentSort = Yii::$app->request->get('sort',     '');
                         'category',
                         $currentCategory,
                         array_merge(['' => Yii::t('BazaarModule.base', 'All Categories')], $categories),
-                        ['class' => 'form-select filter-auto-submit']
+                        ['id' => 'bazaar-category', 'class' => 'form-select']
                     ) ?>
                 </div>
 
@@ -73,11 +82,12 @@ $currentSort = Yii::$app->request->get('sort',     '');
                             'price' => Yii::t('BazaarModule.base', 'Price'),
                             'category' => Yii::t('BazaarModule.base', 'Category'),
                         ],
-                        ['class' => 'form-select filter-auto-submit']
+                        ['id' => 'bazaar-sort', 'class' => 'form-select']
                     ) ?>
                 </div>
             </div>
-        </form>
+
+        <?php ActiveForm::end(); ?>
 
         <?php if (empty($modules)): ?>
             <div class="text-center py-5">
@@ -90,21 +100,27 @@ $currentSort = Yii::$app->request->get('sort',     '');
 
         <?php else: ?>
 
+            <div class="no-results text-center py-4 d-none">
+                <p class="text-body-secondary">
+                    <?= Yii::t('BazaarModule.base', 'No modules match your search.') ?>
+                </p>
+            </div>
+
             <div class="row g-4 modules-container">
                 <?php foreach ($modules as $module): ?>
                     <div class="col-lg-4 col-md-6">
                         <div class="card h-100 module-card position-relative"
-                             data-category="<?= Html::encode($module->category) ?>">
+                             data-category="<?= Html::encode($module->category) ?>"
+                             data-price="<?= (float)$module->price ?>">
 
                             <?php if (!empty($module->screenshots)): ?>
                                 <?= Html::img($module->screenshots[0], [
                                     'class' => 'card-img-top',
-                                    'alt'   => Html::encode($module->name),
+                                    'alt' => Html::encode($module->name),
                                     'style' => 'height:200px;object-fit:cover;',
                                 ]) ?>
                             <?php else: ?>
-                                <div class="placeholder-image d-flex align-items-center
-                                            justify-content-center bg-light"
+                                <div class="placeholder-image d-flex align-items-center justify-content-center bg-light"
                                      style="height:200px;">
                                     <?= Icon::get('puzzle-piece') ?>
                                 </div>
@@ -112,21 +128,15 @@ $currentSort = Yii::$app->request->get('sort',     '');
 
                             <?php if ($module->isPaid && $module->price > 0 && !$module->isPurchased): ?>
                                 <div class="position-absolute top-0 end-0 m-2">
-                                    <span class="badge bg-primary">
-                                        <?= Html::encode($module->getFormattedPrice()) ?>
-                                    </span>
+                                    <span class="badge bg-primary"><?= Html::encode($module->getFormattedPrice()) ?></span>
                                 </div>
                             <?php elseif (!$module->isPaid): ?>
                                 <div class="position-absolute top-0 end-0 m-2">
-                                    <span class="badge bg-success">
-                                        <?= Yii::t('BazaarModule.base', 'Free') ?>
-                                    </span>
+                                    <span class="badge bg-success"><?= Yii::t('BazaarModule.base', 'Free') ?></span>
                                 </div>
                             <?php elseif ($module->isPurchased): ?>
                                 <div class="position-absolute top-0 end-0 m-2">
-                                    <span class="badge bg-success">
-                                        <?= Yii::t('BazaarModule.base', 'Purchased') ?>
-                                    </span>
+                                    <span class="badge bg-success"><?= Yii::t('BazaarModule.base', 'Purchased') ?></span>
                                 </div>
                             <?php endif; ?>
 
@@ -143,18 +153,14 @@ $currentSort = Yii::$app->request->get('sort',     '');
                                 </p>
 
                                 <p class="card-text flex-grow-1">
-                                    <?= Html::encode(
-                                        \yii\helpers\StringHelper::truncate($module->description, 100)
-                                    ) ?>
+                                    <?= Html::encode(\yii\helpers\StringHelper::truncate($module->description, 100)) ?>
                                 </p>
 
                                 <?php if (!empty($module->features)): ?>
                                     <div class="mb-3">
                                         <small class="text-body-secondary">
                                             <?= Yii::t('BazaarModule.base', 'Features:') ?>
-                                            <?= Html::encode(
-                                                implode(', ', array_slice($module->features, 0, 2))
-                                            ) ?>
+                                            <?= Html::encode(implode(', ', array_slice($module->features, 0, 2))) ?>
                                             <?php if (count($module->features) > 2): ?>…<?php endif; ?>
                                         </small>
                                     </div>
@@ -162,15 +168,13 @@ $currentSort = Yii::$app->request->get('sort',     '');
 
                                 <div class="d-flex justify-content-between align-items-center mt-auto">
 
-                                    <div class="price" data-price="<?= (float)$module->price ?>">
+                                    <div class="price">
                                         <?php if ($module->isSoon): ?>
                                             <?= Badge::warning(Yii::t('BazaarModule.base', 'Coming Soon')) ?>
                                         <?php elseif ($module->isPurchased): ?>
                                             <?= Badge::success(Yii::t('BazaarModule.base', 'Purchased')) ?>
                                         <?php elseif ($module->isPaid): ?>
-                                            <strong class="text-primary">
-                                                <?= Html::encode($module->getFormattedPrice()) ?>
-                                            </strong>
+                                            <strong class="text-primary"><?= Html::encode($module->getFormattedPrice()) ?></strong>
                                         <?php else: ?>
                                             <?= Badge::info(Yii::t('BazaarModule.base', 'Free')) ?>
                                         <?php endif; ?>
@@ -182,24 +186,18 @@ $currentSort = Yii::$app->request->get('sort',     '');
                                             ->sm() ?>
 
                                         <?php if ($module->isSoon): ?>
-
                                         <?php elseif ($module->isPurchased): ?>
                                             <?= Button::success(Yii::t('BazaarModule.base', 'Install'))
                                                 ->link(['/bazaar/admin/install', 'id' => $module->id])
-                                                ->icon('download')
-                                                ->sm() ?>
-
+                                                ->icon('download')->sm() ?>
                                         <?php elseif ($module->isPaid): ?>
                                             <?= Button::primary(Yii::t('BazaarModule.base', 'Buy'))
                                                 ->link(['/bazaar/admin/purchase', 'id' => $module->id])
-                                                ->icon('shopping-cart')
-                                                ->sm() ?>
-
+                                                ->icon('shopping-cart')->sm() ?>
                                         <?php else: ?>
                                             <?= Button::success(Yii::t('BazaarModule.base', 'Install'))
                                                 ->link(['/bazaar/admin/install', 'id' => $module->id])
-                                                ->icon('download')
-                                                ->sm() ?>
+                                                ->icon('download')->sm() ?>
                                         <?php endif; ?>
                                     </div>
 
@@ -213,15 +211,3 @@ $currentSort = Yii::$app->request->get('sort',     '');
         <?php endif; ?>
     </div>
 </div>
-
-<script <?= Html::nonce() ?>>
-    (function () {
-        'use strict';
-
-        document.querySelectorAll('.filter-auto-submit').forEach(function (el) {
-            el.addEventListener('change', function () {
-                document.getElementById('bazaar-filter-form').submit();
-            });
-        });
-    }());
-</script>
