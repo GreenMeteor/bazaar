@@ -4,19 +4,31 @@ humhub.module('bazaar', function(module, require, $) {
     var client = require('client');
     var status = require('ui.status');
 
+    var originalOrder = [];
+
     var init = function() {
+        captureOriginalOrder();
         bindCardHover();
+        bindFilters();
         bindTestConnection();
         bindClearCache();
+    };
+
+    var captureOriginalOrder = function() {
+        originalOrder = $('.modules-container > div').toArray();
     };
 
     var bindFilters = function() {
         var searchTimeout;
 
-        $(document).on('submit', '#bazaar-filter-form', function(e) {
-            e.preventDefault();
-            filterModules();
-        });
+        var $form = $('#bazaar-filter-form');
+        if ($form.length) {
+            $form.on('submit', function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                filterModules();
+            });
+        }
 
         $(document).on('input', '#bazaar-search', function() {
             clearTimeout(searchTimeout);
@@ -38,7 +50,7 @@ humhub.module('bazaar', function(module, require, $) {
         var sort = ($('#bazaar-sort').val() || '');
 
         var $container = $('.modules-container');
-        var $allCols = $container.find('.col-lg-4, .col-md-6');
+        var $allCols = $container.find('> div');
         var anyVisible = false;
 
         $allCols.each(function() {
@@ -49,8 +61,8 @@ humhub.module('bazaar', function(module, require, $) {
 
             var matchesSearch = !search || title.indexOf(search) !== -1 || description.indexOf(search) !== -1;
             var matchesCategory = !category || cardCategory === category;
-
             var visible = matchesSearch && matchesCategory;
+
             $(this).toggleClass('d-none', !visible);
 
             if (visible) {
@@ -58,38 +70,46 @@ humhub.module('bazaar', function(module, require, $) {
             }
         });
 
-        if (sort !== '') {
-            var $visibleCols = $allCols.not('.d-none').toArray();
+        var colsToSort;
 
-            $visibleCols.sort(function(a, b) {
-                var $ca = $(a).find('.module-card');
-                var $cb = $(b).find('.module-card');
+        if (sort === '') {
+            colsToSort = originalOrder.filter(function(el) {
+            return !$(el).hasClass('d-none');
+            });
+        } else {
+            colsToSort = $allCols.not('.d-none').toArray();
 
+            var sortKeys = colsToSort.map(function(el) {
+                var $card = $(el).find('.module-card');
+                return {
+                    el: el,
+                    name: $card.find('.card-title').text().trim().toLowerCase(),
+                    price: parseFloat($card.data('price')) || 0,
+                    category: ($card.data('category') || '').toLowerCase(),
+                };
+            });
+
+            sortKeys.sort(function(a, b) {
                 if (sort === 'name') {
-                    var na = $ca.find('.card-title').text().trim().toLowerCase();
-                    var nb = $cb.find('.card-title').text().trim().toLowerCase();
-                    return na < nb ? -1 : na > nb ? 1 : 0;
+                    return a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
                 }
-
                 if (sort === 'price') {
-                    var pa = parseFloat($ca.data('price')) || 0;
-                    var pb = parseFloat($cb.data('price')) || 0;
-                    return pa - pb;
+                    return a.price - b.price;
                 }
-
                 if (sort === 'category') {
-                    var ca = ($ca.data('category') || '').toLowerCase();
-                    var cb = ($cb.data('category') || '').toLowerCase();
-                    return ca < cb ? -1 : ca > cb ? 1 : 0;
+                    return a.category < b.category ? -1 : a.category > b.category ? 1 : 0;
                 }
-
                 return 0;
             });
 
-            $.each($visibleCols, function(i, el) {
-                $container.append(el);
-            });
+            colsToSort = sortKeys.map(function(k) { return k.el; });
         }
+
+        var fragment = document.createDocumentFragment();
+        colsToSort.forEach(function(el) {
+            fragment.appendChild(el);
+        });
+        $container[0].appendChild(fragment);
 
         $('.no-results').toggleClass('d-none', anyVisible);
     };
@@ -163,6 +183,10 @@ humhub.module('bazaar', function(module, require, $) {
             });
         });
     };
+
+    $(function() {
+        init();
+    });
 
     module.export({
         init: init,
