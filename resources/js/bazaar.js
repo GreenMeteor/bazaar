@@ -6,7 +6,6 @@ humhub.module('bazaar', function(module, require, $) {
 
     var init = function() {
         bindCardHover();
-        bindFilters();
         bindTestConnection();
         bindClearCache();
     };
