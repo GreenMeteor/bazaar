@@ -1,5 +1,8 @@
 # Changelogs
 
+Release v1.0.0-beta.4 (TBA)
+- Fix: Original order capture for sorting modules
+
 Release v1.0.0-beta.3 (2/27/2026)
 - Fix: Search field, category filter, and sort order now update the module list automatically without requiring the search button to be clicked
 - Fix: Category filter and sort dropdown were triggering a full page reload via a competing inline script; inline script removed and all three controls unified under a single ActiveForm

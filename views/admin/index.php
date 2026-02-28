@@ -1,6 +1,5 @@
 <?php
 
-use humhub\widgets\form\ActiveForm;
 use humhub\widgets\bootstrap\Button;
 use humhub\widgets\bootstrap\Badge;
 use humhub\modules\ui\icon\widgets\Icon;
@@ -26,7 +25,6 @@ $currentSort = Yii::$app->request->get('sort', '');
         <div class="float-end">
             <?= Button::primary(Yii::t('BazaarModule.base', 'Configure'))
                 ->link(['/bazaar/admin/config'])
-                ->loader(false)
                 ->icon('cog')->sm() ?>
 
             <?= Button::secondary(Yii::t('BazaarModule.base', 'Clear Cache'))
@@ -34,20 +32,13 @@ $currentSort = Yii::$app->request->get('sort', '');
                     'data-action' => 'clearCache',
                     'data-action-url' => Url::to(['/bazaar/admin/clear-cache']),
                 ])
-                ->loader(false)
                 ->icon('refresh')->sm() ?>
         </div>
     </div>
 
     <div class="panel-body">
 
-        <?php $form = ActiveForm::begin([
-            'id' => 'bazaar-filter-form',
-            'method' => 'get',
-            'action' => Url::to(['/bazaar/admin/index']),
-            'options' => ['data-ui-addition' => false],
-        ]); ?>
-
+        <form id="bazaar-filter-form" method="get" action="<?= Url::to(['/bazaar/admin/index']) ?>">
             <div class="row mb-4">
                 <div class="col-md-6">
                     <div class="input-group">
@@ -86,8 +77,7 @@ $currentSort = Yii::$app->request->get('sort', '');
                     ) ?>
                 </div>
             </div>
-
-        <?php ActiveForm::end(); ?>
+        </form>
 
         <?php if (empty($modules)): ?>
             <div class="text-center py-5">
