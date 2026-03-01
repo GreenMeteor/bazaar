@@ -18,13 +18,13 @@ A comprehensive module for HumHub that allows browsing and purchasing additional
 - HumHub 1.18.0 or higher
 - PHP 8.2 or higher
 - Active internet connection for API access
-- Green Meteor API key (register at https://greenmeteor.com/developers)
+- Green Meteor API key (register at https://greenmeteor.net/developers)
 
 ## Configuration
 
 ### API Settings
 
-1. **API Base URL**: Default is `https://api.greenmeteor.com/v1`
+1. **API Base URL**: Default is `https://greenmeteor.net/api/modules`
 2. **API Key**: Your authentication key from Green Meteor
 3. **Cache Timeout**: How long to cache API responses (default: 3600 seconds)
 4. **Enable Purchasing**: Allow direct module purchases (default: enabled)
@@ -72,3 +72,4 @@ The module communicates with Green Meteor's API using the following endpoints:
 - `GET /modules/{id}` - Get module details
 
 - `POST /modules/{id}/purchase` - Purchase a module
+
