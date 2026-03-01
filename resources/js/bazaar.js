@@ -8,7 +8,8 @@ humhub.module('bazaar', function(module, require, $) {
 
     var init = function() {
         captureOriginalOrder();
-        bindCardHover();
+        bindPillFilters();
+        bindCategorySelect();
         bindFilters();
         bindTestConnection();
         bindClearCache();
@@ -16,6 +17,36 @@ humhub.module('bazaar', function(module, require, $) {
 
     var captureOriginalOrder = function() {
         originalOrder = $('.modules-container > div').toArray();
+    };
+
+    /**
+     * Pill buttons → update #bazaar-category dropdown value and trigger filter.
+     * Also updates active state on the pills.
+     */
+    var bindPillFilters = function() {
+        $(document).on('click', '[data-bzr-cat]', function() {
+            var cat = $(this).data('bzr-cat');
+            $('#bazaar-category').val(cat).trigger('change');
+            syncPillActive(cat);
+        });
+    };
+
+    /**
+     * #bazaar-category dropdown → keep pill active state in sync
+     * so changing the dropdown also highlights the correct pill.
+     */
+    var bindCategorySelect = function() {
+        $(document).on('change', '#bazaar-category', function() {
+            syncPillActive($(this).val());
+        });
+    };
+
+    /**
+     * Set the active pill to match the given category value.
+     */
+    var syncPillActive = function(cat) {
+        $('[data-bzr-cat]').removeClass('active');
+        $('[data-bzr-cat="' + cat + '"]').addClass('active');
     };
 
     var bindFilters = function() {
@@ -56,11 +87,18 @@ humhub.module('bazaar', function(module, require, $) {
         $allCols.each(function() {
             var $card = $(this).find('.module-card');
             var cardCategory = $card.data('category') || '';
-            var title = $card.find('.card-title').text().toLowerCase();
-            var description = $card.find('.card-text').first().text().toLowerCase();
+            var title = ($card.find('.bzr-c-card-name').first().text() || '').toLowerCase();
+            var description = ($card.find('.bzr-c-card-desc').first().text() || '').toLowerCase();
 
-            var matchesSearch = !search || title.indexOf(search) !== -1 || description.indexOf(search) !== -1;
-            var matchesCategory = !category || cardCategory === category;
+            var matchesSearch = !search ||
+                title.indexOf(search) !== -1 ||
+                description.indexOf(search) !== -1;
+
+            var matchesCategory = !category ||
+                (category === 'purchased'
+                    ? parseInt($card.data('purchased')) === 1
+                    : cardCategory === category);
+
             var visible = matchesSearch && matchesCategory;
 
             $(this).toggleClass('d-none', !visible);
@@ -74,7 +112,7 @@ humhub.module('bazaar', function(module, require, $) {
 
         if (sort === '') {
             colsToSort = originalOrder.filter(function(el) {
-            return !$(el).hasClass('d-none');
+                return !$(el).hasClass('d-none');
             });
         } else {
             colsToSort = $allCols.not('.d-none').toArray();
@@ -83,7 +121,7 @@ humhub.module('bazaar', function(module, require, $) {
                 var $card = $(el).find('.module-card');
                 return {
                     el: el,
-                    name: $card.find('.card-title').text().trim().toLowerCase(),
+                    name: ($card.find('.bzr-c-card-name').first().text() || '').trim().toLowerCase(),
                     price: parseFloat($card.data('price')) || 0,
                     category: ($card.data('category') || '').toLowerCase(),
                 };
@@ -114,14 +152,6 @@ humhub.module('bazaar', function(module, require, $) {
         $('.no-results').toggleClass('d-none', anyVisible);
     };
 
-    var bindCardHover = function() {
-        $(document).on('mouseenter', '.module-card', function() {
-            $(this).addClass('shadow-lg');
-        }).on('mouseleave', '.module-card', function() {
-            $(this).removeClass('shadow-lg');
-        });
-    };
-
     var bindTestConnection = function() {
         $(document).on('click', '[data-action="testConnection"]', function(e) {
             e.preventDefault();
@@ -135,7 +165,7 @@ humhub.module('bazaar', function(module, require, $) {
                 .addClass('alert alert-info')
                 .html(
                     '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>' +
-                    'Testing connection...'
+                    module.text('testingConnection')
                 );
 
             client.get(url, {}).then(function(response) {
@@ -153,7 +183,7 @@ humhub.module('bazaar', function(module, require, $) {
                 $btn.prop('disabled', false);
                 $result.removeClass('alert-info alert-success alert-danger')
                     .addClass('alert-danger')
-                    .html('Could not reach the API. Check your server logs.');
+                    .html(module.text('connectionFailed'));
             });
         });
     };
@@ -171,15 +201,15 @@ humhub.module('bazaar', function(module, require, $) {
                 $btn.prop('disabled', false);
 
                 if (response && response.success) {
-                    status.success('Cache cleared. Reloading…');
+                    status.success(module.text('cacheCleared'));
                     setTimeout(function() { window.location.reload(); }, 800);
                 } else {
-                    status.error('Failed to clear cache.');
+                    status.error(module.text('cacheFailed'));
                 }
 
             }).catch(function() {
                 $btn.prop('disabled', false);
-                status.error('Failed to clear cache.');
+                status.error(module.text('cacheFailed'));
             });
         });
     };

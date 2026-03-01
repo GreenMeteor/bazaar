@@ -13,11 +13,14 @@ use humhub\modules\bazaar\models\Module;
  * ApiService
  *
  * Handles all HTTP communication with the Green Meteor Bazaar API:
- *   - GET /api/modules.php?action=list → module catalogue
- *   - GET /api/modules.php?action=get  → single module
+ *   - GET /api/modules.php?action=list     → module catalogue
+ *   - GET /api/modules.php?action=get      → single module
  *   - POST /api/modules.php action=purchase → create Stripe checkout session
  *   - GET /api/verify-purchase.php?session_id= → verify a Stripe payment
  *
+ * downloadUrl is only populated when the API explicitly returns one.
+ * Fabricated fallback URLs are never used because they bypass authentication
+ * and cause the install action to receive an HTML error page instead of a ZIP.
  */
 class ApiService extends Component
 {
@@ -65,11 +68,11 @@ class ApiService extends Component
      * Returns all modules from the API as plain arrays.
      *
      * Caching strategy:
-     *   - Result is cached per user (keyed by email/session-id).
+     *   - Result is cached per user (keyed by email or session ID).
      *   - If the cached data contains any paid-but-unpurchased modules we
-     *     immediately bust that cache slice and do a fresh fetch. This ensures
-     *     that after a purchase (or manual credit) completes, the very next
-     *     page load shows Install instead of Buy without waiting for TTL.
+     *     immediately bust that cache slice and perform a fresh fetch, ensuring
+     *     that after a purchase completes the next page load shows Install
+     *     instead of Buy without waiting for the TTL to expire.
      *   - If every paid module is already marked purchased the cache is kept.
      *
      * Falls back to an empty array on failure so the index page renders
@@ -145,18 +148,18 @@ class ApiService extends Component
      *   1. Search the cached per-user catalogue (no extra API call).
      *   2. For paid modules not yet marked purchased in the cache, perform a
      *      fresh lightweight API check using the current user's email so that a
-     *      recently completed purchase / manual credit is always reflected
+     *      recently completed purchase or manual credit is always reflected
      *      without waiting for the cache to expire or be manually cleared.
-     *   3. Fall back to a direct ?action=get request for coming-soon /
+     *   3. Fall back to a direct ?action=get request for coming-soon or
      *      uncached modules not present in the catalogue at all.
      *
-     * @param  string $id  Module ID (numeric or slug string)
+     * @param string $id Module ID (numeric or slug string)
      * @return Module|null
      */
     public function getModule(string $id): ?Module
     {
         $userIdentifier = $this->getCurrentUserIdentifier();
-        $modulesData    = $this->getModules();
+        $modulesData = $this->getModules();
 
         foreach ($modulesData as $moduleData) {
             if ((string)$moduleData['id'] !== $id) {
@@ -168,8 +171,7 @@ class ApiService extends Component
 
                 if ($freshPurchased) {
                     $moduleData['isPurchased'] = true;
-                    $moduleData['downloadUrl'] = $moduleData['downloadUrl']
-                        ?? "https://greenmeteor.net/download?module={$id}";
+                    $moduleData['downloadUrl'] = $moduleData['downloadUrl'] ?? null;
 
                     TagDependency::invalidate(Yii::$app->cache, ['bazaar_modules']);
                 }
@@ -211,8 +213,8 @@ class ApiService extends Component
      * For free modules the API returns is_free: true; for paid modules it
      * returns checkout_url which the controller must redirect to.
      *
-     * @param  string|int $moduleId  Module ID
-     * @param  array $options Must include return_url and cancel_url
+     * @param string|int $moduleId Module ID
+     * @param array $options Must include return_url and cancel_url
      * @return array API response data (checkout_url or is_free)
      * @throws Exception On HTTP error or missing checkout URL
      */
@@ -273,10 +275,12 @@ class ApiService extends Component
 
     /**
      * Calls /api/verify-purchase.php to confirm a Stripe Checkout session
-     * was actually paid.
+     * was actually paid. Returns the API-provided download_url exactly as
+     * received; null is returned when verification fails or no URL was supplied
+     * rather than fabricating a placeholder that may not be accessible.
      *
-     * @param  string $stripeSessionId  The cs_xxx session ID from Stripe
-     * @return array  verified, module_id, payment_status, download_url
+     * @param string $stripeSessionId The cs_xxx session ID from Stripe
+     * @return array{verified: bool, module_id: string|null, payment_status: string, download_url: string|null}
      * @throws Exception On HTTP or JSON error
      */
     public function verifyPurchase(string $stripeSessionId): array
@@ -321,15 +325,14 @@ class ApiService extends Component
                 throw new Exception('Verify API error: ' . $data['error']);
             }
 
+            $verified = (bool)($data['verified'] ?? false);
             $moduleId = $data['module_id'] ?? null;
 
             return [
-                'verified' => (bool)($data['verified'] ?? false),
+                'verified' => $verified,
                 'module_id' => $moduleId,
                 'payment_status' => $data['payment_status'] ?? 'unknown',
-                'download_url' => ($data['verified'] ?? false) && $moduleId
-                    ? ($data['download_url'] ?? "https://greenmeteor.net/download?module={$moduleId}")
-                    : null,
+                'download_url' => $verified ? ($data['download_url'] ?? null) : null,
             ];
 
         } catch (\yii\httpclient\Exception $e) {
@@ -345,14 +348,17 @@ class ApiService extends Component
      * data may be stale:
      *   - The purchase-success page (just completed a Stripe payment)
      *   - The install action (guard before allowing download)
-     *   - Any place where a user claims they've already purchased
+     *   - Any place where a user claims they have already purchased
      *
-     * Also invalidates the current user's cache slice when a purchase is
-     * confirmed so the next normal page load reflects the new state without
-     * waiting for the TTL to expire.
+     * Invalidates the current user's cache slice when a purchase is confirmed
+     * so the next normal page load reflects the new state without waiting for
+     * the TTL to expire.
      *
-     * @param  string $moduleId
-     * @param  string|null $userIdentifier Email or session-id; defaults to current user
+     * Returns false without an API call when no valid email can be resolved,
+     * since session IDs are never recognised as purchasers on greenmeteor.net.
+     *
+     * @param string $moduleId
+     * @param string|null $userIdentifier Email or session ID; defaults to current user
      * @return bool
      */
     public function checkPurchaseStatus(string $moduleId, ?string $userIdentifier = null): bool
@@ -384,7 +390,6 @@ class ApiService extends Component
 
             if ($isPurchased) {
                 $cacheKey = 'bazaar_modules_' . md5($userEmail);
-
                 Yii::$app->cache->delete($cacheKey);
             }
 
@@ -399,11 +404,12 @@ class ApiService extends Component
      * Normalises raw API data (snake_case keys) into the camelCase array
      * expected by the Module model.
      *
-     * downloadUrl is built whenever the module is accessible (free OR
-     * purchased). Both isPurchased AND downloadUrl must be truthy for the
-     * Install button to render in the views.
+     * downloadUrl is set only when the API explicitly supplies one for a free
+     * or purchased module. No fallback URL is fabricated; a null value causes
+     * the install action to display a meaningful error rather than attempting
+     * to download an unauthenticated or non-existent endpoint.
      *
-     * @param  array $data  Raw row from the API response
+     * @param array $data Raw row from the API response
      * @return array
      */
     private function mapModuleData(array $data): array
@@ -421,8 +427,7 @@ class ApiService extends Component
         $downloadUrl = null;
 
         if (!$isPaid || $isPurchased) {
-            $downloadUrl = $data['download_url']
-                ?? "https://greenmeteor.net/download?module={$data['id']}";
+            $downloadUrl = $data['download_url'] ?? null;
         }
 
         $screenshots = [];
@@ -440,7 +445,7 @@ class ApiService extends Component
         return [
             'id' => (string)($data['id'] ?? ''),
             'name' => $data['name'] ?? '',
-            'description'  => $data['description'] ?? '',
+            'description' => $data['description'] ?? '',
             'version' => $data['version'] ?? '1.0.0',
             'price' => $price,
             'currency' => strtoupper($data['currency'] ?? 'USD'),
@@ -448,12 +453,12 @@ class ApiService extends Component
             'isPurchased' => $isPurchased,
             'isSoon' => (bool)($data['is_soon'] ?? false),
             'category' => $data['category'] ?? $this->inferCategory($data['name'] ?? '', $data['description'] ?? ''),
-            'author' => $data['author']               ?? 'Green Meteor',
+            'author' => $data['author'] ?? 'Green Meteor',
             'screenshots' => $screenshots,
             'features' => $this->parseFeatures($data),
             'requirements' => $data['requirements'] ?? [],
             'downloadUrl' => $downloadUrl,
-            'productId'    => $data['product_id'] ?? null,
+            'productId' => $data['product_id'] ?? null,
             'priceId' => $data['price_id'] ?? null,
         ];
     }
@@ -461,6 +466,10 @@ class ApiService extends Component
     /**
      * Infers a category from the module name and description when the API
      * does not supply one explicitly.
+     *
+     * @param string $name
+     * @param string $description
+     * @return string
      */
     private function inferCategory(string $name, string $description): string
     {
@@ -492,7 +501,7 @@ class ApiService extends Component
      *   1. metadata.features (comma-separated string)
      *   2. features array returned directly by the API
      *
-     * @param  array    $data
+     * @param array $data
      * @return string[]
      */
     private function parseFeatures(array $data): array
@@ -519,8 +528,12 @@ class ApiService extends Component
      * determine which modules they have purchased.
      *
      * Tries several known HumHub identity property paths before falling back
-     * to a direct DB lookup, then finally to session_id() if no email can
-     * be resolved (session_id always yields no purchases on greenmeteor.net).
+     * to a direct DB lookup, then finally to session_id() when no email can
+     * be resolved. A session ID will never match a purchase record on
+     * greenmeteor.net, so checkPurchaseStatus() short-circuits on non-email
+     * values before making any API call.
+     *
+     * @return string
      */
     private function getCurrentUserIdentifier(): string
     {

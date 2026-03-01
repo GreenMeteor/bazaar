@@ -1,90 +1,366 @@
-/* Module Card Styles */
-.module-card {
-    transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
-    border: 1px solid var(--bs-border-color);
-}
+/* ── Option C: Compact List Marketplace ─────────────────── */
 
-.module-card:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+/* ── Panel heading: embedded search ─────────────────────── */
+.bzr-c-heading {
+    display: flex;
+    align-items: center;
+    gap: .625rem;
+    flex-wrap: wrap;
 }
-
-.module-card .placeholder-image {
-    background: linear-gradient(135deg, var(--bs-light) 0%, var(--bs-gray-100) 100%);
-    color: var(--bs-gray-500);
+.bzr-c-heading-label {
+    white-space: nowrap;
+    flex-shrink: 0;
 }
-
-.module-card .card-title {
-    font-size: 1.1rem;
-    font-weight: 600;
-    line-height: 1.3;
+.bzr-c-heading-search {
+    flex: 1;
+    min-width: 140px;
+    max-width: 280px;
 }
-
-.module-card .price {
-    font-size: 1.1rem;
-    font-weight: 600;
+.bzr-c-heading-search .form-control {
+    font-size: .8rem;
+    background: var(--bs-secondary-bg);
+    border-color: var(--bs-border-color);
+    color: var(--bs-body-color);
+    border-radius: .3rem 0 0 .3rem;
 }
-
-/* Filter Bar */
-.filter-category,
-.filter-sort {
-    transition: border-color 0.15s ease-in-out;
-}
-
-.filter-category:focus,
-.filter-sort:focus {
+.bzr-c-heading-search .form-control:focus {
+    background: var(--bs-body-bg);
     border-color: var(--bs-primary);
-    box-shadow: 0 0 0 0.25rem rgba(var(--bs-primary-rgb), 0.25);
+    box-shadow: none;
+}
+.bzr-c-heading-search .btn {
+    border-color: var(--bs-border-color);
+    color: var(--bs-secondary-color);
+    background: var(--bs-secondary-bg);
+}
+.bzr-c-heading-actions {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    margin-left: auto;
+    flex-shrink: 0;
 }
 
-/* Price Display */
+/* ── Pill category strip ─────────────────────────────────── */
+.bzr-c-pillstrip {
+    display: flex;
+    align-items: center;
+    gap: .35rem;
+    padding: .5rem .875rem;
+    border-bottom: 1px solid var(--bs-border-color);
+    background: var(--bs-body-bg);
+    flex-wrap: wrap;
+    overflow: hidden;
+}
+.bzr-c-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: .25rem;
+    padding: .22rem .65rem;
+    font-size: .775rem;
+    font-weight: 500;
+    border: 1px solid var(--bs-border-color);
+    border-radius: 2rem;
+    color: var(--bs-body-color);
+    background: transparent;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .14s, border-color .14s, color .14s;
+    flex-shrink: 0;
+}
+.bzr-c-pill:hover {
+    background: var(--bs-secondary-bg);
+    border-color: rgba(var(--bs-primary-rgb), .3);
+}
+.bzr-c-pill.active {
+    background: var(--bs-primary);
+    border-color: var(--bs-primary);
+    color: #fff;
+}
+.bzr-c-pill-count {
+    font-size: .66rem;
+    opacity: .75;
+}
+.bzr-c-pill-sep {
+    width: 1px;
+    height: 1rem;
+    background: var(--bs-border-color);
+    flex-shrink: 0;
+}
+
+/* ── Sort + category selects pushed right ────────────────── */
+.bzr-c-sort-wrap {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+.bzr-c-sort-wrap .form-select {
+    font-size: .775rem;
+    padding: .22rem .55rem;
+    border-radius: 2rem;
+    border-color: var(--bs-border-color);
+    background: var(--bs-body-bg);
+    color: var(--bs-body-color);
+    height: auto;
+}
+.bzr-c-sort-wrap .form-select:focus {
+    border-color: var(--bs-primary);
+    box-shadow: 0 0 0 .2rem rgba(var(--bs-primary-rgb), .15);
+}
+
+/* ── Panel body ──────────────────────────────────────────── */
+.panel-default .panel-body.bzr-c-body {
+    padding: .875rem;
+    background: var(--bs-tertiary-bg, var(--bs-secondary-bg));
+}
+
+/* ── Module cards: horizontal layout ────────────────────── */
+.module-card {
+    border: 1px solid var(--bs-border-color);
+    border-left: 3px solid transparent;
+    border-radius: .375rem;
+    background: var(--bs-body-bg);
+    overflow: hidden;
+    transition: border-color .16s, box-shadow .16s;
+}
+.module-card:hover {
+    border-left-color: var(--bs-primary);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, .08);
+}
+.bzr-c-card-inner {
+    display: flex;
+    align-items: stretch;
+    min-height: 80px;
+}
+
+/* Thumbnail */
+.bzr-c-card-thumb {
+    width: 88px;
+    flex-shrink: 0;
+    background: var(--bs-secondary-bg);
+    border-right: 1px solid var(--bs-border-color);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--bs-secondary-color);
+    font-size: 1.5rem;
+    overflow: hidden;
+}
+.bzr-c-card-thumb img {
+    width: 88px;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+}
+
+/* Content */
+.bzr-c-card-content {
+    flex: 1;
+    padding: .6rem .8rem;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: .2rem;
+    min-width: 0;
+}
+.bzr-c-card-row1 {
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    flex-wrap: wrap;
+}
+.bzr-c-card-name {
+    font-size: .875rem;
+    font-weight: 700;
+    color: var(--bs-emphasis-color);
+    margin: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    flex-shrink: 1;
+    min-width: 0;
+}
+.bzr-c-card-badges {
+    display: flex;
+    gap: .25rem;
+    align-items: center;
+    flex-shrink: 0;
+    margin-left: auto;
+}
+.bzr-c-card-meta {
+    font-size: .71rem;
+    color: var(--bs-secondary-color);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.bzr-c-card-desc {
+    font-size: .79rem;
+    color: var(--bs-body-color);
+    opacity: .8;
+    line-height: 1.45;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Actions column */
+.bzr-c-card-actions {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    justify-content: center;
+    gap: .35rem;
+    padding: .6rem .75rem .6rem 0;
+    flex-shrink: 0;
+    border-left: 1px solid var(--bs-border-color);
+    margin-left: .5rem;
+    padding-left: .75rem;
+}
+.bzr-c-card-price {
+    font-size: .85rem;
+    font-weight: 700;
+    color: var(--bs-primary);
+    white-space: nowrap;
+}
+
+/* ── Empty state ─────────────────────────────────────────── */
+.bzr-c-empty {
+    text-align: center;
+    padding: 3rem 1.5rem;
+    color: var(--bs-secondary-color);
+}
+.bzr-c-empty-icon {
+    font-size: 2rem;
+    opacity: .2;
+    margin-bottom: .6rem;
+    display: block;
+}
+.bzr-c-empty h5 {
+    color: var(--bs-emphasis-color);
+    font-weight: 600;
+    font-size: .95rem;
+    margin-bottom: .3rem;
+}
+
+/* ── No-results state ────────────────────────────────────── */
+.no-results {
+    text-align: center;
+    padding: 2.5rem 1rem;
+    color: var(--bs-secondary-color);
+}
+
+/* ── Price display (view page) ───────────────────────────── */
 .price-display h3 {
     font-weight: 700;
 }
 
-/* Purchase Form */
+/* ── Purchase form ───────────────────────────────────────── */
 .form-check-input:checked {
     background-color: var(--bs-primary);
     border-color: var(--bs-primary);
 }
 
-/* Responsive Design */
-@media (max-width: 768px) {
-    .module-card .btn-group {
-        width: 100%;
-    }
-    
-    .module-card .btn-group .btn {
-        flex: 1;
-    }
-}
-
-/* Loading States */
+/* ── Loading overlay ─────────────────────────────────────── */
 .loading-overlay {
     position: absolute;
     top: 0;
     left: 0;
     right: 0;
     bottom: 0;
-    background: rgba(255, 255, 255, 0.8);
+    background: rgba(var(--bs-body-bg-rgb, 255, 255, 255), .85);
     display: flex;
     align-items: center;
     justify-content: center;
     z-index: 1000;
 }
 
-/* Animation for new modules */
-@keyframes slideInUp {
-    from {
-        opacity: 0;
-        transform: translateY(20px);
+/* ── Card entrance animation ─────────────────────────────── */
+@keyframes bzrCIn {
+    from { opacity: 0; transform: translateX(-5px); }
+    to   { opacity: 1; transform: none; }
+}
+.modules-container > div {
+    animation: bzrCIn .18s ease both;
+}
+.modules-container > div:nth-child(1)  { animation-delay: .03s; }
+.modules-container > div:nth-child(2)  { animation-delay: .06s; }
+.modules-container > div:nth-child(3)  { animation-delay: .09s; }
+.modules-container > div:nth-child(4)  { animation-delay: .12s; }
+.modules-container > div:nth-child(5)  { animation-delay: .15s; }
+.modules-container > div:nth-child(6)  { animation-delay: .18s; }
+.modules-container > div:nth-child(7)  { animation-delay: .21s; }
+.modules-container > div:nth-child(8)  { animation-delay: .24s; }
+
+/* ── Responsive: tablet and below (≤767px) ───────────────── */
+@media (max-width: 767px) {
+    /* Pills wrap freely onto new lines */
+    .bzr-c-pillstrip {
+        padding: .4rem .75rem;
+        gap: .3rem;
+        align-items: flex-start;
     }
-    to {
-        opacity: 1;
-        transform: translateY(0);
+
+    /* Slightly smaller pills so more fit per row */
+    .bzr-c-pill {
+        font-size: .72rem;
+        padding: .18rem .55rem;
+    }
+
+    /* Hide the vertical separator — it disrupts wrapping */
+    .bzr-c-pill-sep {
+        display: none;
+    }
+
+    /* Sort wrap always renders as its own full-width row
+       below all pills regardless of DOM position */
+    .bzr-c-sort-wrap {
+        order: 999;
+        width: 100%;
+        margin-left: 0;
+        margin-top: .2rem;
+        padding-top: .4rem;
+        border-top: 1px solid var(--bs-border-color);
+        flex-shrink: 1;
+    }
+    .bzr-c-sort-wrap .form-select {
+        flex: 1;
+        min-width: 0;
+        border-radius: .375rem;
     }
 }
 
-.module-card {
-    animation: slideInUp 0.5s ease-out;
+/* ── Responsive: mobile (≤575px) ────────────────────────── */
+@media (max-width: 575px) {
+    /* Stack cards vertically */
+    .bzr-c-card-inner {
+        flex-direction: column;
+    }
+    .bzr-c-card-thumb {
+        width: 100%;
+        height: 100px;
+        border-right: none;
+        border-bottom: 1px solid var(--bs-border-color);
+    }
+    .bzr-c-card-thumb img {
+        width: 100%;
+        height: 100px;
+    }
+    .bzr-c-card-actions {
+        flex-direction: row;
+        border-left: none;
+        border-top: 1px solid var(--bs-border-color);
+        padding: .5rem .8rem;
+        margin-left: 0;
+        justify-content: space-between;
+        align-items: center;
+    }
+    .module-card .btn-group {
+        width: 100%;
+    }
+    .module-card .btn-group .btn {
+        flex: 1;
+    }
 }
