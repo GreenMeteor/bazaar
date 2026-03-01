@@ -34,7 +34,7 @@ A comprehensive module for HumHub that allows browsing and purchasing additional
 You can also configure the module using environment variables:
 
 ```env
-BAZAAR_API_BASE_URL=https://api.greenmeteor.com/v1
+BAZAAR_API_BASE_URL=https://greenmeteor.net/api/modules
 BAZAAR_API_KEY=your_api_key_here
 BAZAAR_CACHE_TIMEOUT=3600
 BAZAAR_ENABLE_PURCHASING=true
@@ -70,4 +70,5 @@ The module communicates with Green Meteor's API using the following endpoints:
 
 - `GET /modules` - Fetch available modules
 - `GET /modules/{id}` - Get module details
+
 - `POST /modules/{id}/purchase` - Purchase a module
