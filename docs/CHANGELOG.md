@@ -1,6 +1,12 @@
 # Changelogs
 
-Release v1.0.0-beta.4 (TBA)
+Release v1.0.0-beta.5 (3/1/2026)
+- Enh: Add Purchased Category
+- Chg: Complete redesign of module list
+- Enh: Completely translatable
+- Fix: Minor bugfixes
+
+Release v1.0.0-beta.4 (2/28/2026)
 - Fix: Original order capture for sorting modules
 
 Release v1.0.0-beta.3 (2/27/2026)

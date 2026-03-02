@@ -80,9 +80,7 @@ BazaarAsset::register($this);
                         <?= Badge::warning(Yii::t('BazaarModule.base', 'Coming Soon'))->lg() ?>
                     <?php elseif ($module->isPurchased): ?>
                         <?= Badge::success(Yii::t('BazaarModule.base', 'Purchased'))->lg() ?>
-                    <?php elseif ($module->isPaid): ?>
-                        <?= Badge::primary(Yii::t('BazaarModule.base', 'Paid'))->lg() ?>
-                    <?php else: ?>
+                    <?php elseif (!$module->isPaid): ?>
                         <?= Badge::info(Yii::t('BazaarModule.base', 'Free'))->lg() ?>
                     <?php endif; ?>
                 </div>
@@ -99,7 +97,7 @@ BazaarAsset::register($this);
                     <div>
                         <?php if ($module->isPurchased && $module->downloadUrl): ?>
                             <div class="btn-group" role="group">
-                                <?= Button::primary(Yii::t('BazaarModule.base', 'Install'))
+                                <?= Button::success(Yii::t('BazaarModule.base', 'Install'))
                                     ->link(['/bazaar/admin/install', 'id' => $module->id])
                                     ->loader(false)
                                     ->icon('cog')

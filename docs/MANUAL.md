@@ -41,6 +41,7 @@ Use the **All Categories** dropdown to filter by:
 
 | Category | Examples |
 |---|---|
+| Purchased | Modules you already own |
 | Communication | Messaging, notifications, mail |
 | Content | Wikis, documents, articles |
 | Integration | Stripe, webhooks, external APIs |
@@ -58,7 +59,7 @@ Each card shows one of the following status indicators:
 | Badge | Meaning |
 |---|---|
 | **Free** (blue) | No cost — Install button shown |
-| **$X.XX USD** (blue, top-right corner) | Paid, not yet purchased |
+| **$X.XX USD** (price label, top-right corner) | Paid, not yet purchased — no badge colour, displayed as a plain price |
 | **Purchased** (green, top-right corner) | You own this module — Install button shown |
 | **Coming Soon** (yellow) | Not yet available |
 

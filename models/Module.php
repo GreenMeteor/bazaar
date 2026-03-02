@@ -2,6 +2,7 @@
 
 namespace humhub\modules\bazaar\models;
 
+use Yii;
 use yii\base\Model;
 
 class Module extends Model
@@ -24,9 +25,6 @@ class Module extends Model
     public $isPaid = false;
     public $isSoon = false;
 
-    /**
-     * @inheritdoc
-     */
     public function rules()
     {
         return [
@@ -39,34 +37,51 @@ class Module extends Model
         ];
     }
 
-    /**
-     * Get formatted price
-     * @return string
-     */
     public function getFormattedPrice()
     {
-        if ($this->price == 0) {
-            return \Yii::t('BazaarModule.base', 'Free');
+        if ((float)$this->price === 0.0) {
+            return Yii::t('BazaarModule.base', 'Free');
         }
 
         return number_format($this->price, 2) . ' ' . $this->currency;
     }
 
     /**
-     * Get category label
-     * @return string
+     * Category translation map
      */
+    protected static function categoryMap()
+    {
+        return [
+            'communication' => Yii::t('BazaarModule.base', 'Communication'),
+            'content' => Yii::t('BazaarModule.base', 'Content'),
+            'social' => Yii::t('BazaarModule.base', 'Social'),
+            'productivity' => Yii::t('BazaarModule.base', 'Productivity'),
+            'integration' => Yii::t('BazaarModule.base', 'Integration'),
+            'other' => Yii::t('BazaarModule.base', 'Other'),
+        ];
+    }
+
     public function getCategoryLabel()
     {
-        $categories = [
-            'communication' => \Yii::t('BazaarModule.base', 'Communication'),
-            'content' => \Yii::t('BazaarModule.base', 'Content'),
-            'social' => \Yii::t('BazaarModule.base', 'Social'),
-            'productivity' => \Yii::t('BazaarModule.base', 'Productivity'),
-            'integration' => \Yii::t('BazaarModule.base', 'Integration'),
-            'other' => \Yii::t('BazaarModule.base', 'Other'),
-        ];
+        $map = self::categoryMap();
 
-        return $categories[$this->category] ?? $this->category;
+        return $map[$this->category]
+            ?? Yii::t('BazaarModule.base', ucfirst(str_replace(['-', '_'], ' ', $this->category)));
+    }
+
+    /**
+     * Dummy block for message extractor
+     * Ensures categories are always detected
+     */
+    protected static function registerCategoryMessages()
+    {
+        if (false) {
+            Yii::t('BazaarModule.base', 'Communication');
+            Yii::t('BazaarModule.base', 'Content');
+            Yii::t('BazaarModule.base', 'Social');
+            Yii::t('BazaarModule.base', 'Productivity');
+            Yii::t('BazaarModule.base', 'Integration');
+            Yii::t('BazaarModule.base', 'Other');
+        }
     }
 }
