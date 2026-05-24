@@ -18,7 +18,7 @@ A comprehensive module for HumHub that allows browsing and purchasing additional
 - HumHub 1.18.0 or higher
 - PHP 8.2 or higher
 - Active internet connection for API access
-- Green Meteor API key (register at https://greenmeteor.net/developers)
+- Green Meteor API key (register at https://greenmeteor.net/developer)
 
 ## Configuration
 
