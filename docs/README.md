@@ -24,7 +24,7 @@ A comprehensive module for HumHub that allows browsing and purchasing additional
 
 ### API Settings
 
-1. **API Base URL**: Default is `https://api.greenmeteor.com/v1`
+1. **API Base URL**: Default is `https://greenmeteor.com/v1`
 2. **API Key**: Your authentication key from Green Meteor
 3. **Cache Timeout**: How long to cache API responses (default: 3600 seconds)
 4. **Enable Purchasing**: Allow direct module purchases (default: enabled)
@@ -34,7 +34,7 @@ A comprehensive module for HumHub that allows browsing and purchasing additional
 You can also configure the module using environment variables:
 
 ```env
-BAZAAR_API_BASE_URL=https://api.greenmeteor.com/v1
+BAZAAR_API_BASE_URL=https://greenmeteor.com/v1
 BAZAAR_API_KEY=your_api_key_here
 BAZAAR_CACHE_TIMEOUT=3600
 BAZAAR_ENABLE_PURCHASING=true
