@@ -11,7 +11,6 @@ return [
     'controllerMap' => [
         'admin' => 'humhub\modules\bazaar\controllers\AdminController',
     ],
-
     'events' => [
         [AdminMenu::class, AdminMenu::EVENT_INIT, [Events::class, 'onAdminMenuInit']],
     ],
