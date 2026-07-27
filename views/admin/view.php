@@ -34,7 +34,7 @@ BazaarAsset::register($this);
                                 <div class="carousel-item <?= $index === 0 ? 'active' : '' ?>">
                                     <?= Html::img($screenshot, [
                                         'class' => 'd-block w-100 rounded',
-                                        'alt'   => Html::encode(Yii::t('BazaarModule.base', 'Screenshot {n}', ['n' => $index + 1])),
+                                        'alt' => Html::encode(Yii::t('BazaarModule.base', 'Screenshot {n}', ['n' => $index + 1])),
                                         'style' => 'height:300px;object-fit:cover;',
                                     ]) ?>
                                 </div>
