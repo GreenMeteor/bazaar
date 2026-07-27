@@ -1,5 +1,3 @@
-/* ── Option C: Compact List Marketplace ─────────────────── */
-
 /* ── Panel heading: embedded search ─────────────────────── */
 .bzr-c-heading {
     display: flex;
@@ -280,19 +278,19 @@
 /* ── Card entrance animation ─────────────────────────────── */
 @keyframes bzrCIn {
     from { opacity: 0; transform: translateX(-5px); }
-    to   { opacity: 1; transform: none; }
+    to { opacity: 1; transform: none; }
 }
 .modules-container > div {
     animation: bzrCIn .18s ease both;
 }
-.modules-container > div:nth-child(1)  { animation-delay: .03s; }
-.modules-container > div:nth-child(2)  { animation-delay: .06s; }
-.modules-container > div:nth-child(3)  { animation-delay: .09s; }
-.modules-container > div:nth-child(4)  { animation-delay: .12s; }
-.modules-container > div:nth-child(5)  { animation-delay: .15s; }
-.modules-container > div:nth-child(6)  { animation-delay: .18s; }
-.modules-container > div:nth-child(7)  { animation-delay: .21s; }
-.modules-container > div:nth-child(8)  { animation-delay: .24s; }
+.modules-container > div:nth-child(1) { animation-delay: .03s; }
+.modules-container > div:nth-child(2) { animation-delay: .06s; }
+.modules-container > div:nth-child(3) { animation-delay: .09s; }
+.modules-container > div:nth-child(4) { animation-delay: .12s; }
+.modules-container > div:nth-child(5) { animation-delay: .15s; }
+.modules-container > div:nth-child(6) { animation-delay: .18s; }
+.modules-container > div:nth-child(7) { animation-delay: .21s; }
+.modules-container > div:nth-child(8) { animation-delay: .24s; }
 
 /* ── Responsive: tablet and below (≤767px) ───────────────── */
 @media (max-width: 767px) {
