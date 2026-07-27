@@ -314,7 +314,7 @@ class AdminController extends Controller
     }
 
     /**
-     * GET  – Shows the Bazaar configuration form.
+     * GET – Shows the Bazaar configuration form.
      * POST – Saves settings and redirects to the module index.
      */
     public function actionConfig(): \yii\web\Response|string
