@@ -92,7 +92,7 @@ BazaarAsset::register($this);
                     <input class="form-check-input" type="checkbox" id="acceptTerms" required>
                     <label class="form-check-label" for="acceptTerms">
                         <?= Yii::t('BazaarModule.base', 'I agree to the {terms} and {privacy}', [
-                            'terms'   => '<a href="https://greenmeteor.net/legal#terms-of-service" target="_blank">'
+                            'terms' => '<a href="https://greenmeteor.net/legal#terms-of-service" target="_blank">'
                                        . Yii::t('BazaarModule.base', 'Terms of Service') . '</a>',
                             'privacy' => '<a href="https://greenmeteor.net/legal#privacy-policy" target="_blank">'
                                        . Yii::t('BazaarModule.base', 'Privacy Policy') . '</a>',
@@ -138,10 +138,10 @@ BazaarAsset::register($this);
     'use strict';
 
     var termsCheckbox = document.getElementById('acceptTerms');
-    var purchaseBtn   = document.getElementById('purchase-btn');
-    var purchaseForm  = document.getElementById('purchase-form');
-    var loadingMsg    = document.getElementById('loading-message');
-    var warningMsg    = document.getElementById('loading-warning');
+    var purchaseBtn = document.getElementById('purchase-btn');
+    var purchaseForm = document.getElementById('purchase-form');
+    var loadingMsg = document.getElementById('loading-message');
+    var warningMsg = document.getElementById('loading-warning');
 
     if (termsCheckbox && purchaseBtn) {
         termsCheckbox.addEventListener('change', function () {
