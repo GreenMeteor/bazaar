@@ -13,8 +13,8 @@ use humhub\modules\bazaar\models\Module;
  * ApiService
  *
  * Handles all HTTP communication with the Green Meteor Bazaar API:
- *   - GET /api/modules.php?action=list     → module catalogue
- *   - GET /api/modules.php?action=get      → single module
+ *   - GET /api/modules.php?action=list → module catalogue
+ *   - GET /api/modules.php?action=get → single module
  *   - POST /api/modules.php action=purchase → create Stripe checkout session
  *   - GET /api/verify-purchase.php?session_id= → verify a Stripe payment
  *
