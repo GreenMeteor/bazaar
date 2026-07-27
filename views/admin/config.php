@@ -35,9 +35,9 @@ BazaarAsset::register($this);
         ])->hint(Yii::t('BazaarModule.base', 'Your Green Meteor API authentication key (optional for basic access)')) ?>
 
         <?= $form->field($model, 'cacheTimeout')->textInput([
-            'type'        => 'number',
-            'min'         => 60,
-            'max'         => 86400,
+            'type' => 'number',
+            'min' => 60,
+            'max' => 86400,
             'placeholder' => '3600',
         ])->hint(Yii::t('BazaarModule.base', 'How long to cache API responses in seconds (60 – 86400)')) ?>
 
