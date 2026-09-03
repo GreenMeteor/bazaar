@@ -3,7 +3,7 @@
     "name": "Module Bazaar",
     "description": "Browse and purchase HumHub modules from Green Meteor",
     "keywords": ["marketplace", "modules", "bazaar", "store"],
-    "version": "1.0.0-beta.5",
+    "version": "1.0.0-beta.6",
     "humhub": {
         "minVersion": "1.18.0",
         "maxVersion": "1.19"
