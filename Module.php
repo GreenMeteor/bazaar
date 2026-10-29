@@ -64,6 +64,19 @@ class Module extends BaseModule
     }
 
     /**
+     * Whether administrators are allowed to purchase modules through Bazaar.
+     *
+     * Read the persisted setting rather than the module property because
+     * HumHub stores configuration values in the module settings manager.
+     */
+    public function isPurchasingEnabled(): bool
+    {
+        $value = $this->settings->get('enablePurchasing', $this->enablePurchasing);
+
+        return filter_var($value, FILTER_VALIDATE_BOOLEAN);
+    }
+
+    /**
      * Returns a configured ApiService instance.
      *
      * Settings are read from the HumHub settings manager (persisted via

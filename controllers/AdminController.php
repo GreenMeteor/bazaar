@@ -5,8 +5,14 @@ namespace humhub\modules\bazaar\controllers;
 use Yii;
 use yii\web\NotFoundHttpException;
 use humhub\modules\admin\components\Controller;
+use humhub\modules\admin\jobs\DisableModuleJob;
+use humhub\modules\admin\jobs\RemoveModuleJob;
+use humhub\modules\queue\helpers\QueueHelper;
 use humhub\modules\bazaar\models\Module as BazaarModule;
 use humhub\modules\bazaar\models\ConfigureForm;
+use humhub\modules\bazaar\models\ModuleUploadForm;
+use humhub\modules\bazaar\services\ModuleInstaller;
+use yii\web\UploadedFile;
 use humhub\modules\admin\libs\CacheHelper;
 
 /**
@@ -118,7 +124,7 @@ class AdminController extends Controller
         $bazaarModule = Yii::$app->getModule('bazaar');
         $module = $this->findModule($id);
 
-        if (!$bazaarModule->enablePurchasing) {
+        if (!$bazaarModule->isPurchasingEnabled()) {
             $this->view->error(Yii::t('BazaarModule.base', 'Purchasing is currently disabled.'));
             return $this->redirect(['/bazaar/admin/view', 'id' => $id]);
         }
@@ -226,23 +232,27 @@ class AdminController extends Controller
      */
     public function actionInstall(string $id): \yii\web\Response
     {
+        $this->forcePostRequest();
+
         $module = $this->findModule($id);
 
         if ($module->isSoon) {
             $this->view->error(Yii::t('BazaarModule.base', 'This module is not yet available.'));
-
             return $this->redirect(['/bazaar/admin/view', 'id' => $id]);
         }
 
         if ($module->isPaid && !$module->isPurchased) {
-            $this->view->error(Yii::t('BazaarModule.base', 'You must purchase this module before installing it.'));
+            if (!Yii::$app->getModule('bazaar')->isPurchasingEnabled()) {
+                $this->view->error(Yii::t('BazaarModule.base', 'Purchasing is currently disabled.'));
+                return $this->redirect(['/bazaar/admin/view', 'id' => $id]);
+            }
 
+            $this->view->error(Yii::t('BazaarModule.base', 'You must purchase this module before installing it.'));
             return $this->redirect(['/bazaar/admin/purchase', 'id' => $id]);
         }
 
         if (empty($module->downloadUrl)) {
             $this->view->error(Yii::t('BazaarModule.base', 'No download URL is available for this module.'));
-
             return $this->redirect(['/bazaar/admin/view', 'id' => $id]);
         }
 
@@ -250,19 +260,447 @@ class AdminController extends Controller
             $result = $this->downloadAndInstall($module);
 
             if ($result['success']) {
-                $this->view->success(Yii::t('BazaarModule.base',
+                $this->view->success(Yii::t(
+                    'BazaarModule.base',
                     '"{name}" has been installed. Enable it under Administration → Modules.',
                     ['name' => $module->name]
                 ));
             } else {
                 $this->view->error($result['error'] ?? Yii::t('BazaarModule.base', 'Installation failed.'));
             }
-
         } catch (\Throwable $e) {
+            Yii::error($e->getMessage(), 'bazaar');
             $this->view->error(Yii::t('BazaarModule.base', 'Installation error: {error}', ['error' => $e->getMessage()]));
         }
 
         return $this->redirect(['/bazaar/admin/view', 'id' => $id]);
+    }
+
+    /**
+     * Uploads and installs a module ZIP supplied by an administrator.
+     */
+    public function actionUpload(): \yii\web\Response|string
+    {
+        $model = new ModuleUploadForm();
+        $model->zipFile = UploadedFile::getInstance($model, 'zipFile');
+
+        if (Yii::$app->request->isPost) {
+            $model->load(Yii::$app->request->post());
+            $archivePath = $model->upload();
+
+            if ($archivePath !== null) {
+                try {
+                    $result = $model->install($archivePath);
+
+                    if ($result !== null) {
+                        Yii::$app->cache->flush();
+                        $this->view->success(Yii::t(
+                            'BazaarModule.base',
+                            'Module "{name}" version {version} was {action}.',
+                            [
+                                'name' => (string)($result['manifest']['name'] ?? $result['root']),
+                                'version' => (string)($result['manifest']['version'] ?? ''),
+                                'action' => !empty($result['replaced']) ? Yii::t('BazaarModule.base', 'updated') : Yii::t('BazaarModule.base', 'installed'),
+                            ]
+                        ));
+
+                        return $this->redirect(['/bazaar/admin/installed']);
+                    }
+                } finally {
+                    @unlink($archivePath);
+                }
+            }
+        }
+
+        return $this->render('@bazaar/views/admin/upload', ['model' => $model]);
+    }
+
+    /**
+     * Lists only Bazaar purchases that are also present in the local modules directory.
+     * Locally uploaded modules and unrelated third-party modules are intentionally excluded.
+     */
+    public function actionInstalled(): string
+    {
+        $installer = Yii::createObject(ModuleInstaller::class);
+
+        return $this->render('@bazaar/views/admin/installed', [
+            'modules' => $this->getPurchasedInstalledModules($installer),
+        ]);
+    }
+
+    /** Enables an installed, purchased Bazaar module. The action is POST-only. */
+    public function actionEnableModule(string $id): \yii\web\Response
+    {
+        $this->forcePostRequest();
+        $installer = Yii::createObject(ModuleInstaller::class);
+
+        try {
+            $purchasedModule = $this->findPurchasedInstalledModule($installer, $id);
+            if ($purchasedModule === null) {
+                throw new \yii\web\ForbiddenHttpException(Yii::t(
+                    'BazaarModule.base',
+                    'Only purchased modules installed locally can be enabled here.'
+                ));
+            }
+
+            $module = $this->resolveLocalHumHubModule($installer, $id);
+            if (!$module instanceof \humhub\components\Module) {
+                throw new \yii\web\NotFoundHttpException(Yii::t('BazaarModule.base', 'HumHub could not load this module. Check that its config.php is present and valid.'));
+            }
+
+            if (QueueHelper::isQueued(new DisableModuleJob(['moduleId' => $module->id]))) {
+                throw new \RuntimeException(Yii::t('BazaarModule.base', 'Module deactivation is still in progress. Please try again shortly.'));
+            }
+            if (QueueHelper::isQueued(new RemoveModuleJob(['moduleId' => $module->id]))) {
+                throw new \RuntimeException(Yii::t('BazaarModule.base', 'Module removal is still in progress. Please try again shortly.'));
+            }
+
+            if ($module->enable() === false) {
+                throw new \RuntimeException(Yii::t('BazaarModule.base', 'Could not enable the module. Check the application logs for details.'));
+            }
+
+            Yii::$app->moduleManager->flushCache();
+            Yii::$app->cache->flush();
+            $this->view->success(Yii::t('BazaarModule.base', 'Module enabled.'));
+        } catch (\Throwable $e) {
+            Yii::error('Bazaar module enable failed for ' . $id . ': ' . $e->getMessage(), 'bazaar');
+            $this->view->error(Yii::t('BazaarModule.base', 'Could not enable module: {error}', ['error' => $e->getMessage()]));
+        }
+
+        return $this->redirect(['/bazaar/admin/installed']);
+    }
+
+    /** Queues deactivation of an installed, purchased Bazaar module. The action is POST-only. */
+    public function actionDisableModule(string $id): \yii\web\Response
+    {
+        $this->forcePostRequest();
+        $installer = Yii::createObject(ModuleInstaller::class);
+
+        try {
+            $purchasedModule = $this->findPurchasedInstalledModule($installer, $id);
+            if ($purchasedModule === null) {
+                throw new \yii\web\ForbiddenHttpException(Yii::t(
+                    'BazaarModule.base',
+                    'Only purchased modules installed locally can be disabled here.'
+                ));
+            }
+
+            $module = $this->resolveLocalHumHubModule($installer, $id);
+            if (!$module instanceof \humhub\components\Module) {
+                throw new \yii\web\NotFoundHttpException(Yii::t('BazaarModule.base', 'HumHub could not load this module. Check that its config.php is present and valid.'));
+            }
+
+            if (!$module->isEnabled) {
+                $this->view->info(Yii::t('BazaarModule.base', 'Module is already disabled.'));
+            } else {
+                Yii::$app->queue->push(new DisableModuleJob(['moduleId' => $module->id]));
+                $this->view->info(Yii::t('BazaarModule.base', 'Module deactivation started. It may take a moment to complete.'));
+            }
+        } catch (\Throwable $e) {
+            Yii::error('Bazaar module disable failed for ' . $id . ': ' . $e->getMessage(), 'bazaar');
+            $this->view->error(Yii::t('BazaarModule.base', 'Could not disable module: {error}', ['error' => $e->getMessage()]));
+        }
+
+        return $this->redirect(['/bazaar/admin/installed']);
+    }
+
+    /**
+     * Resolves an installed module from its directory, registering its local
+     * config on demand when HumHub has not discovered it in the current runtime.
+     */
+    private function resolveLocalHumHubModule(ModuleInstaller $installer, string $directoryId): ?\humhub\components\Module
+    {
+        if (!preg_match('/^[a-zA-Z0-9_-]+$/', $directoryId)) {
+            return null;
+        }
+
+        $moduleManager = Yii::$app->moduleManager;
+
+        try {
+            $module = $moduleManager->getModule($directoryId, false);
+            if ($module instanceof \humhub\components\Module) {
+                return $module;
+            }
+
+            $modulePath = $installer->getModulesPath() . $directoryId;
+            if (!is_dir($modulePath) || !is_file($modulePath . DIRECTORY_SEPARATOR . 'config.php')) {
+                return null;
+            }
+
+            $registeredId = $moduleManager->register($modulePath);
+            if (!is_string($registeredId) || $registeredId === '') {
+                return null;
+            }
+
+            $module = $moduleManager->getModule($registeredId, false);
+            return $module instanceof \humhub\components\Module ? $module : null;
+        } catch (\Throwable $e) {
+            Yii::debug('Could not register local Bazaar module directory "' . $directoryId . '": ' . $e->getMessage(), 'bazaar');
+            return null;
+        }
+    }
+
+    /** Finds a purchased Bazaar product matched to a local module directory. */
+    private function findPurchasedInstalledModule(ModuleInstaller $installer, string $id): ?array
+    {
+        foreach ($this->getPurchasedInstalledModules($installer) as $module) {
+            if (($module['id'] ?? '') === $id && !empty($module['installed'])) {
+                return $module;
+            }
+        }
+
+        return null;
+    }
+
+    /** Removes files for a disabled, purchased Bazaar module. The action is POST-only. */
+    public function actionRemove(string $id): \yii\web\Response
+    {
+        $this->forcePostRequest();
+        $installer = Yii::createObject(ModuleInstaller::class);
+
+        try {
+            $purchasedInstalled = $this->getPurchasedInstalledModules($installer);
+            $isEligible = false;
+            foreach ($purchasedInstalled as $installedModule) {
+                if ($installedModule['id'] === $id) {
+                    $isEligible = true;
+                    break;
+                }
+            }
+
+            if (!$isEligible) {
+                throw new \yii\web\ForbiddenHttpException(Yii::t(
+                    'BazaarModule.base',
+                    'Only purchased Bazaar modules that are installed can be removed here.'
+                ));
+            }
+
+            if (!$installer->deleteModule($id)) {
+                throw new \RuntimeException(Yii::t('BazaarModule.base', 'The module directory could not be completely removed.'));
+            }
+
+            Yii::$app->cache->flush();
+            $this->view->success(Yii::t('BazaarModule.base', 'Module "{id}" files were removed.', ['id' => $id]));
+        } catch (\Throwable $e) {
+            Yii::error('Bazaar module removal failed for ' . $id . ': ' . $e->getMessage(), 'bazaar');
+            $this->view->error(Yii::t('BazaarModule.base', 'Could not remove module: {error}', ['error' => $e->getMessage()]));
+        }
+
+        return $this->redirect(['/bazaar/admin/installed']);
+    }
+
+    /**
+     * Returns locally installed modules that the Bazaar API marks as purchased.
+     *
+     * The current API payload exposes a numeric catalogue ID and does not
+     * provide a HumHub directory ID. Prefer an explicit directory identifier
+     * when one is available, then use a normalized exact name match between
+     * the API product name and the local module manifest/directory name.
+     * Ambiguous product names are deliberately not matched.
+     *
+     * @return array<int, array<string, mixed>>
+     */
+    private function getPurchasedInstalledModules(ModuleInstaller $installer): array
+    {
+        $installed = $installer->getInstalledModules();
+
+        $apiService = Yii::$app->getModule('bazaar')->getApiService();
+        // Force a fresh list so newly completed purchases aren't hidden by a
+        // per-user cache entry from before the purchase.
+        $apiModules = $apiService->getModules(true);
+        $purchasedByDirectoryId = [];
+        $purchasedByName = [];
+
+        foreach ($apiModules as $data) {
+            if (!is_array($data) || empty($data['isPurchased']) || empty($data['id'])) {
+                continue;
+            }
+
+            $product = new BazaarModule($data);
+            if (!$product->isPurchased) {
+                continue;
+            }
+
+            // Use an explicit installable module identifier if a future API
+            // response supplies one. The current API's `id` is only a catalogue ID.
+            $directoryId = trim((string)($data['moduleId'] ?? ''));
+            if ($directoryId !== '') {
+                $purchasedByDirectoryId[$directoryId] = $product;
+            }
+
+            // The API currently returns the product name but not its HumHub
+            // directory ID. Index normalized names and only accept unique matches.
+            $normalizedName = $this->normalizeModuleIdentifier((string)$product->name);
+            if ($normalizedName !== '') {
+                $purchasedByName[$normalizedName][] = $product;
+            }
+        }
+
+        $result = [];
+        $matchedProductIds = [];
+        foreach ($installed as $localModule) {
+            $directoryId = trim((string)($localModule['id'] ?? ''));
+            if ($directoryId === '') {
+                continue;
+            }
+
+            $product = $purchasedByDirectoryId[$directoryId] ?? null;
+
+            if (!$product instanceof BazaarModule) {
+                $localNames = [
+                    $this->normalizeModuleIdentifier((string)($localModule['name'] ?? '')),
+                    $this->normalizeModuleIdentifier($directoryId),
+                ];
+
+                foreach (array_unique(array_filter($localNames)) as $normalizedName) {
+                    $matches = $purchasedByName[$normalizedName] ?? [];
+                    if (count($matches) === 1) {
+                        $product = $matches[0];
+                        break;
+                    }
+                }
+            }
+
+            if (!$product instanceof BazaarModule || !$product->isPurchased) {
+                continue;
+            }
+
+            $localModule['bazaarModule'] = $product;
+            $localModule['installed'] = true;
+            $result[] = $localModule;
+            $matchedProductIds[(string)$product->id] = true;
+        }
+
+        // The current API exposes catalogue IDs and product names, but not a
+        // reliable HumHub directory identifier. Keep every confirmed purchase
+        // visible even when its local installation cannot be matched safely.
+        // Such rows are informational only and cannot be removed from here.
+        foreach ($apiModules as $data) {
+            if (!is_array($data) || empty($data['isPurchased']) || empty($data['id'])) {
+                continue;
+            }
+
+            $productId = (string)$data['id'];
+            if (isset($matchedProductIds[$productId])) {
+                continue;
+            }
+
+            $product = new BazaarModule($data);
+            if (!$product->isPurchased) {
+                continue;
+            }
+
+            // The API catalogue ID is not a local module ID. As a final
+            // fallback, check whether a directory named after the normalized
+            // product name exists, even if its manifest is missing.
+            $directoryId = $this->findModuleDirectoryByName($installer, (string)$product->name);
+            $isInstalled = $directoryId !== null;
+            $manifestPath = $isInstalled
+                ? $installer->getModulesPath() . $directoryId . DIRECTORY_SEPARATOR . 'module.json'
+                : null;
+            $manifest = $manifestPath && is_file($manifestPath)
+                ? json_decode((string)file_get_contents($manifestPath), true)
+                : null;
+
+            $result[] = [
+                'id' => $directoryId ?? '',
+                'name' => (string)$product->name,
+                'version' => is_array($manifest) ? (string)($manifest['version'] ?? '') : '',
+                'description' => (string)$product->description,
+                'enabled' => $isInstalled && $installer->isModuleEnabled($directoryId),
+                'path' => $isInstalled ? $installer->getModulesPath() . $directoryId : '',
+                'installed' => $isInstalled,
+                'bazaarModule' => $product,
+            ];
+            $matchedProductIds[$productId] = true;
+        }
+
+        return $result;
+    }
+
+    /**
+     * Finds a local module directory by its normalized directory name.
+     * This fallback also detects directories whose module.json is missing.
+     */
+    private function findModuleDirectoryByName(ModuleInstaller $installer, string $name): ?string
+    {
+        $normalizedName = $this->normalizeModuleIdentifier($name);
+        if ($normalizedName === '') {
+            return null;
+        }
+
+        $modulesPath = $installer->getModulesPath();
+        if (!is_dir($modulesPath)) {
+            return null;
+        }
+
+        // Prefer exact identifier matches. If a product display name is shorter
+        // than its local directory (for example "Gravatar" and "gravatar-main"),
+        // allow a unique prefix match. Never choose arbitrarily between modules.
+        $candidates = [];
+        foreach (new \DirectoryIterator($modulesPath) as $entry) {
+            if ($entry->isDot() || !$entry->isDir()) {
+                continue;
+            }
+
+            $directoryId = $entry->getFilename();
+            if (!preg_match('/^[a-zA-Z0-9_-]+$/', $directoryId)) {
+                continue;
+            }
+
+            $identifiers = [$directoryId];
+            $manifestPath = $entry->getPathname() . DIRECTORY_SEPARATOR . 'module.json';
+            if (is_file($manifestPath)) {
+                $manifest = json_decode((string)file_get_contents($manifestPath), true);
+                if (is_array($manifest)) {
+                    $identifiers[] = (string)($manifest['name'] ?? '');
+                    $identifiers[] = (string)($manifest['id'] ?? '');
+                }
+            }
+
+            $bestScore = null;
+            foreach ($identifiers as $identifier) {
+                $candidateName = $this->normalizeModuleIdentifier($identifier);
+                if ($candidateName === '') {
+                    continue;
+                }
+
+                if ($candidateName === $normalizedName) {
+                    $score = 0;
+                } elseif (str_starts_with($candidateName, $normalizedName)
+                    || str_starts_with($normalizedName, $candidateName)) {
+                    $score = 1;
+                } else {
+                    continue;
+                }
+
+                $bestScore = $bestScore === null ? $score : min($bestScore, $score);
+            }
+
+            if ($bestScore !== null) {
+                $candidates[$directoryId] = $bestScore;
+            }
+        }
+
+        if ($candidates === []) {
+            return null;
+        }
+
+        $bestScore = min($candidates);
+        $bestMatches = array_keys(array_filter(
+            $candidates,
+            static fn(int $score): bool => $score === $bestScore
+        ));
+
+        return count($bestMatches) === 1 ? $bestMatches[0] : null;
+    }
+
+    /**
+     * Normalizes a module name or directory identifier for exact matching.
+     */
+    private function normalizeModuleIdentifier(string $identifier): string
+    {
+        return preg_replace('/[^a-z0-9]/', '', strtolower(trim($identifier))) ?? '';
     }
 
     /**
@@ -314,7 +752,7 @@ class AdminController extends Controller
     }
 
     /**
-     * GET – Shows the Bazaar configuration form.
+     * GET  – Shows the Bazaar configuration form.
      * POST – Saves settings and redirects to the module index.
      */
     public function actionConfig(): \yii\web\Response|string
@@ -393,89 +831,130 @@ class AdminController extends Controller
      */
     private function downloadAndInstall(BazaarModule $module): array
     {
-        $modulesPath = Yii::getAlias('@app') . '/modules/';
+        $installer = Yii::createObject(ModuleInstaller::class);
+        $modulesPath = $installer->getModulesPath();
 
         if (!is_dir($modulesPath) || !is_writable($modulesPath)) {
             return [
                 'success' => false,
-                'error' => Yii::t('BazaarModule.base',
-                    'Modules directory is not writable: {path}', ['path' => $modulesPath]
+                'error' => Yii::t(
+                    'BazaarModule.base',
+                    'Modules directory is not writable: {path}',
+                    ['path' => $modulesPath]
                 ),
             ];
         }
 
-        $tempFile = tempnam(sys_get_temp_dir(), 'bazaar_') . '.zip';
-        $apiKey = Yii::$app->getModule('bazaar')->apiKey ?? '';
+        if (!preg_match('#^https://#i', (string)$module->downloadUrl)) {
+            return [
+                'success' => false,
+                'error' => Yii::t('BazaarModule.base', 'Only HTTPS module download URLs are permitted.'),
+            ];
+        }
 
+        $tempFile = tempnam(sys_get_temp_dir(), 'bazaar_download_');
+
+        if ($tempFile === false) {
+            return [
+                'success' => false,
+                'error' => Yii::t('BazaarModule.base', 'Could not create a temporary download file.'),
+            ];
+        }
+
+        $bazaarModule = Yii::$app->getModule('bazaar');
+        $apiKey = (string)$bazaarModule->settings->get('apiKey', $bazaarModule->apiKey ?? '');
         $headers = [
             'Accept: application/zip, application/octet-stream',
-            'User-Agent: HumHub-Bazaar/1.0',
+            'User-Agent: HumHub-Bazaar/1.1',
         ];
 
         if ($apiKey !== '') {
             $headers[] = 'X-Api-Key: ' . $apiKey;
         }
 
+        $fp = fopen($tempFile, 'wb');
+
+        if ($fp === false) {
+            @unlink($tempFile);
+            return [
+                'success' => false,
+                'error' => Yii::t('BazaarModule.base', 'Could not open the temporary download file.'),
+            ];
+        }
+
         $ch = curl_init($module->downloadUrl);
+        $written = 0;
+        $maxSize = ModuleInstaller::MAX_ARCHIVE_SIZE;
+
         curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FILE => $fp,
             CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 5,
             CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_CONNECTTIMEOUT => 15,
             CURLOPT_TIMEOUT => 120,
             CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_USERAGENT => 'HumHub-Bazaar/1.1',
+            CURLOPT_FAILONERROR => false,
+            CURLOPT_WRITEFUNCTION => static function ($curl, string $data) use ($fp, &$written, $maxSize): int {
+                $length = strlen($data);
+
+                if ($written + $length > $maxSize) {
+                    return 0;
+                }
+
+                $written += $length;
+
+                return fwrite($fp, $data);
+            },
         ]);
 
-        $content = curl_exec($ch);
+        curl_exec($ch);
         $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         $curlErr = curl_error($ch);
         curl_close($ch);
+        fclose($fp);
 
-        if ($curlErr !== '' || $httpCode !== 200) {
+        if ($curlErr !== '' || $httpCode < 200 || $httpCode >= 300) {
             @unlink($tempFile);
+
             return [
                 'success' => false,
-                'error' => Yii::t('BazaarModule.base',
+                'error' => Yii::t(
+                    'BazaarModule.base',
                     'Download failed (HTTP {code}){error}',
-                    ['code' => $httpCode, 'error' => $curlErr ? ": $curlErr" : '']
+                    ['code' => $httpCode, 'error' => $curlErr !== '' ? ': ' . $curlErr : '']
                 ),
             ];
         }
 
-        if (substr($content, 0, 2) !== 'PK') {
+        if ($written === 0 || $written > $maxSize) {
+            @unlink($tempFile);
+            return [
+                'success' => false,
+                'error' => Yii::t('BazaarModule.base', 'The downloaded module is empty or exceeds the 64 MB limit.'),
+            ];
+        }
+
+        try {
+            $result = $installer->install($tempFile, false);
+
+            Yii::$app->cache->flush();
+
+            Yii::info("Module '{$module->id}' installed to {$modulesPath}", 'bazaar');
+
+            return ['success' => true, 'result' => $result];
+        } catch (\Throwable $e) {
             Yii::error(
-                "Module '{$module->id}' download is not a ZIP. Response preview: " . substr($content, 0, 500),
+                "Module '{$module->id}' installation failed: " . $e->getMessage(),
                 'bazaar'
             );
-            return [
-                'success' => false,
-                'error' => Yii::t('BazaarModule.base',
-                    'Downloaded file is not a valid ZIP. The server returned an unexpected response — check the application log for details.'
-                ),
-            ];
-        }
 
-        if (file_put_contents($tempFile, $content) === false) {
-            return ['success' => false, 'error' => Yii::t('BazaarModule.base', 'Could not save downloaded file.')];
-        }
-
-        $zip = new \ZipArchive();
-        $res = $zip->open($tempFile);
-
-        if ($res !== true) {
+            return ['success' => false, 'error' => $e->getMessage()];
+        } finally {
             @unlink($tempFile);
-            return [
-                'success' => false,
-                'error' => Yii::t('BazaarModule.base', 'Failed to open ZIP (code: {code}).', ['code' => $res]),
-            ];
         }
-
-        $zip->extractTo($modulesPath);
-        $zip->close();
-        @unlink($tempFile);
-
-        Yii::$app->cache->flush();
-        Yii::info("Module '{$module->id}' installed to {$modulesPath}", 'bazaar');
-
-        return ['success' => true];
     }
+
 }

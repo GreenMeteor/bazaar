@@ -19,7 +19,9 @@ BazaarAsset::register($this);
         <div class="float-end">
             <?= Button::secondary(Yii::t('BazaarModule.base', 'Back to Bazaar'))
                 ->link(['/bazaar/admin/index'])
-                ->icon('arrow-left')->sm() ?>
+                ->icon('arrow-left')->sm()
+                ->loader(false)
+            ?>
         </div>
     </div>
 
@@ -59,14 +61,15 @@ BazaarAsset::register($this);
                 </p>
 
                 <?= Button::info(Yii::t('BazaarModule.base', 'Test Connection'))
+                    ->icon('plug')
+                    ->loader(false)
                     ->options([
                         'id' => 'bazaar-test-btn',
                         'type' => 'button',
                         'data-action' => 'testConnection',
                         'data-action-url' => Url::to(['/bazaar/admin/test-connection']),
                     ])
-                    ->icon('plug')
-                    ->loader(false) ?>
+                ?>
 
                 <div id="bazaar-test-result" class="mt-3 d-none"></div>
             </div>
@@ -75,8 +78,14 @@ BazaarAsset::register($this);
         <br>
 
         <div class="text-end">
-            <?= Button::secondary(Yii::t('base', 'Cancel'))->link(['/bazaar/admin/index']) ?>
-            <?= Button::primary(Yii::t('base', 'Save'))->submit() ?>
+            <?= Button::secondary(Yii::t('base', 'Cancel'))
+                ->link(['/bazaar/admin/index'])
+                ->loader(false)
+            ?>
+            <?= Button::primary(Yii::t('base', 'Save'))
+                ->submit()
+                ->loader(false)
+            ?>
         </div>
 
     </div>

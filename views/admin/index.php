@@ -18,6 +18,7 @@ $currentCategory = Yii::$app->request->get('category', '');
 $currentSort = Yii::$app->request->get('sort', '');
 $totalModules = count($modules);
 $ownedCount = count(array_filter($modules, fn($m) => $m->isPurchased));
+$purchasingEnabled = Yii::$app->getModule('bazaar')->isPurchasingEnabled();
 ?>
 
 <div class="panel panel-default">
@@ -47,7 +48,14 @@ $ownedCount = count(array_filter($modules, fn($m) => $m->isPurchased));
             </form>
 
             <div class="bzr-c-heading-actions">
+                <?= Button::secondary(Yii::t('BazaarModule.base', 'Upload Module'))
+                    ->link(['/bazaar/admin/upload'])
+                    ->icon('upload')->sm() ?>
+                <?= Button::secondary(Yii::t('BazaarModule.base', 'Installed Modules'))
+                    ->link(['/bazaar/admin/installed'])
+                    ->icon('puzzle-piece')->sm() ?>
                 <?= Button::secondary(Yii::t('BazaarModule.base', 'Clear Cache'))
+                    ->loader(false)
                     ->options([
                         'data-action' => 'clearCache',
                         'data-action-url' => Url::to(['/bazaar/admin/clear-cache']),
@@ -128,7 +136,9 @@ $ownedCount = count(array_filter($modules, fn($m) => $m->isPurchased));
                 </p>
                 <?= Button::primary(Yii::t('BazaarModule.base', 'Open Settings'))
                     ->link(['/bazaar/admin/config'])
-                    ->icon('cog')->sm() ?>
+                    ->icon('cog')->sm()
+                    ->loader(false)
+                ?>
             </div>
 
         <?php else: ?>
@@ -210,20 +220,35 @@ $ownedCount = count(array_filter($modules, fn($m) => $m->isPurchased));
                                     <div class="btn-group btn-group-sm">
                                         <?= Button::secondary(Yii::t('BazaarModule.base', 'Details'))
                                             ->link(['/bazaar/admin/view', 'id' => $module->id])
-                                            ->sm() ?>
+                                            ->sm()
+                                            ->loader(false)
+                                        ?>
                                         <?php if ($module->isSoon): ?>
                                         <?php elseif ($module->isPurchased): ?>
-                                            <?= Button::success(Yii::t('BazaarModule.base', 'Install'))
-                                                ->link(['/bazaar/admin/install', 'id' => $module->id])
-                                                ->icon('download')->sm() ?>
-                                        <?php elseif ($module->isPaid): ?>
+                                            <?= Html::beginForm(['/bazaar/admin/install', 'id' => $module->id], 'post', ['class' => 'd-inline']) ?>
+                                                <?= Button::success(Yii::t('BazaarModule.base', 'Install'))
+                                                    ->icon('download')->sm()
+                                                    ->loader(false)
+                                                    ->submit()
+                                                ?>
+                                            <?= Html::endForm() ?>
+                                        <?php elseif ($module->isPaid && $purchasingEnabled): ?>
                                             <?= Button::primary(Yii::t('BazaarModule.base', 'Buy'))
                                                 ->link(['/bazaar/admin/purchase', 'id' => $module->id])
-                                                ->icon('shopping-cart')->sm() ?>
+                                                ->icon('shopping-cart')->sm()
+                                                ->loader(false)
+                                            ?>
+                                        <?php elseif ($module->isPaid): ?>
+                                            <?= Button::secondary(Yii::t('BazaarModule.base', 'Not Available'))
+                                                ->icon('ban')->sm()->disabled() ?>
                                         <?php else: ?>
-                                            <?= Button::success(Yii::t('BazaarModule.base', 'Install'))
-                                                ->link(['/bazaar/admin/install', 'id' => $module->id])
-                                                ->icon('download')->sm() ?>
+                                            <?= Html::beginForm(['/bazaar/admin/install', 'id' => $module->id], 'post', ['class' => 'd-inline']) ?>
+                                                <?= Button::success(Yii::t('BazaarModule.base', 'Install'))
+                                                    ->icon('download')->sm()
+                                                    ->loader(false)
+                                                    ->submit()
+                                                ?>
+                                            <?= Html::endForm() ?>
                                         <?php endif; ?>
                                     </div>
                                 </div>

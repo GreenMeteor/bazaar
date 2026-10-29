@@ -257,3 +257,20 @@ Your web server user does not have write permission to `protected/modules/`. Eit
 ## Getting Help
 
 For account and billing questions, email [pricing@greenmeteor.net](mailto:pricing@greenmeteor.net) or visit [greenmeteor.net](https://greenmeteor.net).
+
+## Uploading a Module Manually
+
+Use **Administration → Module Bazaar → Upload Module** to install a module ZIP that is already on your computer. This is useful for private modules, development builds, or modules obtained outside the Bazaar catalogue.
+
+The upload uses the same archive validation and atomic installer as marketplace downloads. The archive must contain one module directory with a matching `module.json`. Existing modules can be replaced only when the replacement option is selected and the existing module is disabled.
+
+Marketplace installation is POST-only and downloaded archives are limited to 64 MB, HTTPS-only, and validated before they can modify `protected/modules/`.
+
+
+## Local module management
+
+Administrators can use **Upload Module** to install a module ZIP from their computer. The archive must contain one module directory at its root, and that directory must include a valid `module.json` whose `id` matches the directory name. Bazaar rejects unsafe paths, symbolic links, duplicate ZIP entries, oversized archives, and archives with too many files.
+
+The **Installed Modules** page lists module directories with valid manifests. Bazaar can remove files only when a module is disabled. Removing files is not the same as uninstalling a module: it does not run that module's uninstall migrations or remove its database data/settings. Use a module's documented uninstall procedure before removing its files if it has persistent data.
+
+When updating a module through local upload, disable it first and explicitly enable **Replace an existing module**. Keep a backup of your site before replacing production module files.

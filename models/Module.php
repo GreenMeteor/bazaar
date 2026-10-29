@@ -8,6 +8,7 @@ use yii\base\Model;
 class Module extends Model
 {
     public $id;
+    public $moduleId;
     public $name;
     public $description;
     public $version;
@@ -29,6 +30,7 @@ class Module extends Model
     {
         return [
             [['id', 'name'], 'required'],
+            [['moduleId'], 'string'],
             [['id', 'name', 'description', 'version', 'category', 'author', 'downloadUrl'], 'string'],
             [['price'], 'number'],
             [['currency', 'productId', 'priceId'], 'string'],

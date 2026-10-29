@@ -1,12 +1,16 @@
 {
     "id": "bazaar",
     "name": "Module Bazaar",
-    "description": "Browse and purchase HumHub modules from Green Meteor",
-    "keywords": ["marketplace", "modules", "bazaar", "store"],
-    "version": "1.0.0-beta.6",
+    "description": "Browse, purchase, upload, and safely install HumHub modules from Green Meteor.",
+    "keywords": [
+        "marketplace",
+        "modules",
+        "bazaar",
+        "store"
+    ],
+    "version": "1.3.3",
     "humhub": {
-        "minVersion": "1.18.0",
-        "maxVersion": "1.19"
+        "minVersion": "1.19.0"
     },
     "authors": [
         {
@@ -16,10 +20,9 @@
             "role": "Developer"
         }
     ],
-    "homepage": "https://greenmeteor.net/modules",
+    "homepage": "https://greenmeteor.net/",
     "screenshots": [
         "resources/screenshot_01.png",
         "resources/screenshot_02.png"
     ]
-
 }

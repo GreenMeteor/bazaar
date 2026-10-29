@@ -13,8 +13,8 @@ use humhub\modules\bazaar\models\Module;
  * ApiService
  *
  * Handles all HTTP communication with the Green Meteor Bazaar API:
- *   - GET /api/modules.php?action=list → module catalogue
- *   - GET /api/modules.php?action=get → single module
+ *   - GET /api/modules.php?action=list     → module catalogue
+ *   - GET /api/modules.php?action=get      → single module
  *   - POST /api/modules.php action=purchase → create Stripe checkout session
  *   - GET /api/verify-purchase.php?session_id= → verify a Stripe payment
  *
@@ -44,7 +44,11 @@ class ApiService extends Component
         parent::init();
 
         $module = Yii::$app->getModule('bazaar');
-        $this->apiKey = $module->apiKey ?? '';
+        // Preserve an explicitly injected settings value. Fall back to the
+        // module's persisted setting only when no key was provided.
+        if ($this->apiKey === '') {
+            $this->apiKey = (string)$module->settings->get('apiKey', $module->apiKey ?? '');
+        }
 
         $headers = [
             'Accept' => 'application/json',
@@ -80,11 +84,17 @@ class ApiService extends Component
      *
      * @return array[]
      */
-    public function getModules(): array
+    public function getModules(bool $forceRefresh = false): array
     {
         $module = Yii::$app->getModule('bazaar');
         $userIdentifier = $this->getCurrentUserIdentifier();
         $cacheKey = 'bazaar_modules_' . md5($userIdentifier);
+
+        // The Installed Modules page must reflect current purchase ownership,
+        // rather than relying on a potentially stale catalogue cache.
+        if ($forceRefresh) {
+            Yii::$app->cache->delete($cacheKey);
+        }
 
         $cached = Yii::$app->cache->get($cacheKey);
 
@@ -444,6 +454,16 @@ class ApiService extends Component
 
         return [
             'id' => (string)($data['id'] ?? ''),
+            // Some API records distinguish the catalogue/product ID from the
+            // HumHub module directory ID. Preserve that identifier for matching.
+            'moduleId' => (string)(
+                $data['module_id']
+                ?? $data['module_slug']
+                ?? $data['slug']
+                ?? $data['module_directory']
+                ?? $data['directory']
+                ?? ''
+            ),
             'name' => $data['name'] ?? '',
             'description' => $data['description'] ?? '',
             'version' => $data['version'] ?? '1.0.0',
