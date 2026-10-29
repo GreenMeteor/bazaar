@@ -6,6 +6,42 @@ humhub.module('bazaar', function(module, require, $) {
 
     var originalOrder = [];
 
+    var bindModuleUpload = function() {
+        $(document).on('change', '#bazaar-upload-input', function() {
+            var file = this.files && this.files.length ? this.files[0] : null;
+            var $zone = $('#bazaar-upload-zone');
+            var $label = $('#bazaar-upload-label');
+
+            $zone.toggleClass('has-file', Boolean(file));
+
+            if (file) {
+                $label.text(file.name);
+            } else {
+                $label.text(module.text('chooseUpload'));
+            }
+        });
+
+        $(document).on('dragover dragenter', '#bazaar-upload-zone', function(e) {
+            e.preventDefault();
+            $(this).addClass('is-dragover');
+        });
+
+        $(document).on('dragleave drop', '#bazaar-upload-zone', function(e) {
+            e.preventDefault();
+            $(this).removeClass('is-dragover');
+        });
+
+        $(document).on('drop', '#bazaar-upload-zone', function(e) {
+            var files = e.originalEvent.dataTransfer.files;
+
+            if (files && files.length) {
+                var input = document.getElementById('bazaar-upload-input');
+                input.files = files;
+                $(input).trigger('change');
+            }
+        });
+    };
+
     var init = function() {
         captureOriginalOrder();
         bindPillFilters();
@@ -13,6 +49,7 @@ humhub.module('bazaar', function(module, require, $) {
         bindFilters();
         bindTestConnection();
         bindClearCache();
+        bindModuleUpload();
     };
 
     var captureOriginalOrder = function() {

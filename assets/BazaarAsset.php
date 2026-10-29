@@ -25,6 +25,7 @@ class BazaarAsset extends AssetBundle
                 'connectionFailed' => Yii::t('BazaarModule.javascript', 'Could not reach the API. Please try again later or contact support.'),
                 'cacheCleared' => Yii::t('BazaarModule.javascript', 'Cache cleared. Reloading…'),
                 'cacheFailed' => Yii::t('BazaarModule.javascript', 'Failed to clear cache.'),
+                'chooseUpload' => Yii::t('BazaarModule.javascript', 'Click to choose a ZIP file, or drag and drop it here'),
             ],
         ]);
 

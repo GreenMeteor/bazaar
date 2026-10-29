@@ -10,6 +10,7 @@ BazaarAsset::register($this);
 
 /* @var $this \humhub\components\View */
 /* @var $module \humhub\modules\bazaar\models\Module */
+$purchasingEnabled = Yii::$app->getModule('bazaar')->isPurchasingEnabled();
 ?>
 
 <div class="panel panel-default">
@@ -34,7 +35,7 @@ BazaarAsset::register($this);
                                 <div class="carousel-item <?= $index === 0 ? 'active' : '' ?>">
                                     <?= Html::img($screenshot, [
                                         'class' => 'd-block w-100 rounded',
-                                        'alt' => Html::encode(Yii::t('BazaarModule.base', 'Screenshot {n}', ['n' => $index + 1])),
+                                        'alt'   => Html::encode(Yii::t('BazaarModule.base', 'Screenshot {n}', ['n' => $index + 1])),
                                         'style' => 'height:300px;object-fit:cover;',
                                     ]) ?>
                                 </div>
@@ -97,11 +98,13 @@ BazaarAsset::register($this);
                     <div>
                         <?php if ($module->isPurchased && $module->downloadUrl): ?>
                             <div class="btn-group" role="group">
-                                <?= Button::success(Yii::t('BazaarModule.base', 'Install'))
-                                    ->link(['/bazaar/admin/install', 'id' => $module->id])
-                                    ->loader(false)
-                                    ->icon('cog')
-                                    ->options(['data-confirm' => Yii::t('BazaarModule.base', 'This will download and install the module. Continue?')]) ?>
+                                <?= Html::beginForm(['/bazaar/admin/install', 'id' => $module->id], 'post', ['class' => 'd-inline']) ?>
+                                    <?= Button::success(Yii::t('BazaarModule.base', 'Install'))
+                                        ->loader(false)
+                                        ->icon('cog')
+                                        ->submit()
+                                        ->options(['data-confirm' => Yii::t('BazaarModule.base', 'This will download and install the module. Continue?')]) ?>
+                                <?= Html::endForm() ?>
                                 <?= Button::secondary(Yii::t('BazaarModule.base', 'Download Only'))
                                     ->link($module->downloadUrl)
                                     ->loader(false)
@@ -110,18 +113,26 @@ BazaarAsset::register($this);
                                     ->sm() ?>
                             </div>
 
-                        <?php elseif ($module->isPaid && !$module->isSoon): ?>
+                        <?php elseif ($module->isPaid && !$module->isSoon && $purchasingEnabled): ?>
                             <?= Button::primary(Yii::t('BazaarModule.base', 'Purchase'))
                                 ->link(['/bazaar/admin/purchase', 'id' => $module->id])
                                 ->loader(false)
                                 ->icon('shopping-cart') ?>
 
+                        <?php elseif ($module->isPaid && !$module->isSoon): ?>
+                            <?= Button::secondary(Yii::t('BazaarModule.base', 'Not Available'))
+                                ->icon('ban')
+                                ->disabled() ?>
+
                         <?php elseif (!$module->isPaid && $module->downloadUrl): ?>
                             <div class="btn-group" role="group">
-                                <?= Button::success(Yii::t('BazaarModule.base', 'Install'))
-                                    ->link(['/bazaar/admin/install', 'id' => $module->id])
-                                    ->icon('cog')
-                                    ->options(['data-confirm' => Yii::t('BazaarModule.base', 'This will download and install the module. Continue?')]) ?>
+                                <?= Html::beginForm(['/bazaar/admin/install', 'id' => $module->id], 'post', ['class' => 'd-inline']) ?>
+                                    <?= Button::success(Yii::t('BazaarModule.base', 'Install'))
+                                        ->loader(false)
+                                        ->icon('cog')
+                                        ->submit()
+                                        ->options(['data-confirm' => Yii::t('BazaarModule.base', 'This will download and install the module. Continue?')]) ?>
+                                <?= Html::endForm() ?>
                                 <?= Button::secondary(Yii::t('BazaarModule.base', 'Download Only'))
                                     ->link($module->downloadUrl)
                                     ->icon('download')
